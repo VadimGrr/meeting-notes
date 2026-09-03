@@ -157,10 +157,6 @@ main {
     <label for="mic-select">🎤 Микрофон:</label>
     <select id="mic-select"></select>
     <button id="mic-refresh">🔄 Обновить</button>
-    <div id="meter-wrap">
-        <span id="meter-label">Уровень</span>
-        <div id="meter"><div id="meter-fill"></div></div>
-    </div>
 </div>
 
 <main>
@@ -188,13 +184,9 @@ const wordCountEl = document.getElementById('word-count');
 const sumMeta = document.getElementById('sum-meta');
 const micSelect = document.getElementById('mic-select');
 const micRefresh = document.getElementById('mic-refresh');
-const meterFill = document.getElementById('meter-fill');
 
 let recognizer = null;
 let stream = null;
-let analyser = null;
-let audioCtx = null;
-let raf = null;
 let recording = false;
 let selectedMicId = null;
 let finalText = '';
@@ -255,45 +247,6 @@ async function loadDevices() {
     } catch (e) { console.warn('enum err', e); }
 }
 
-// ── Визуализация уровня ──────────────────────
-function startMeter() {
-    stopMeter();
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 1024;
-    analyser.smoothingTimeConstant = 0.5;
-    if (stream) {
-        const src = audioCtx.createMediaStreamSource(stream);
-        src.connect(analyser);
-    }
-    const data = new Uint8Array(analyser.frequencyBinCount);
-    const draw = () => {
-        if (!analyser) return;
-        if (stream && stream.getTracks().some(t => t.readyState === 'live')) {
-            analyser.getByteTimeDomainData(data);
-            let sum = 0;
-            for (let i = 0; i < data.length; i++) {
-                const v = (data[i] - 128) / 128;
-                sum += v * v;
-            }
-            const rms = Math.sqrt(sum / data.length);
-            const pct = Math.min(100, rms * 220);
-            meterFill.style.width = pct + '%';
-        } else {
-            meterFill.style.width = '0%';
-        }
-        raf = requestAnimationFrame(draw);
-    };
-    draw();
-}
-
-function stopMeter() {
-    if (raf) { cancelAnimationFrame(raf); raf = null; }
-    if (audioCtx) { audioCtx.close(); audioCtx = null; }
-    analyser = null;
-    meterFill.style.width = '0%';
-}
-
 // ── Google Web Speech API ────────────────────
 function pickRecognition() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -301,23 +254,34 @@ function pickRecognition() {
     return new SR();
 }
 
+let lastFinal = '';
+
 // Добавляет новый фрагмент в finalText, исключая повторы (Android шлёт их заново)
 function appendDedup(t) {
     if (!t) return false;
-    const norm = (s) => s.toLowerCase().replace(/[«»"'.,!?;:()]/g, '').trim();
+    const norm = (s) => s.toLowerCase()
+        .replace(/[«»"'.,!?;:()\-—]/g, ' ')
+        .replace(/\s+/g, ' ').trim();
     const nt = norm(t);
     if (!nt) return false;
+    const words = nt.split(' ');
+
+    // 1) Полное совпадение с последним добавленным фрагментом → дубль
+    if (lastFinal && norm(lastFinal) === nt) return false;
+
+    // 2) Новый текст целиком уже есть в конце всей записи → дубль
     const tail = norm(finalText);
-    const words = nt.split(/\s+/);
-    // если новые слова полностью уже в конце — пропускаем (дубль)
     if (tail.endsWith(' ' + nt) || tail === nt) return false;
-    // если совпадает последние min(3, все слова) с хвостом — тоже дубль
-    const minLen = Math.min(words.length, 3);
+
+    // 3) Начало нового (первые min(4, все) слова) совпадает с хвостом → дубль
+    const minLen = Math.min(words.length, 4);
     if (minLen > 0) {
         const prefix = words.slice(0, minLen).join(' ');
         if (tail.endsWith(' ' + prefix)) return false;
     }
+
     finalText = finalText ? finalText + ' ' + t : t;
+    lastFinal = t;
     return true;
 }
 
@@ -329,11 +293,6 @@ function start() {
     r.continuous = true;
     r.interimResults = true;
     r.maxAlternatives = 1;
-
-    // поток для визуализатора уровня (плюс Web Speech использует свой микрофон)
-    navigator.mediaDevices.getUserMedia({ audio: micSelect.value ? { deviceId: { exact: micSelect.value } } : true })
-        .then((s) => { stream = s; startMeter(); })
-        .catch(() => { startMeter(); });
 
     r.onstart = () => { recording = true; setStatus('Слушаю...', 'rec'); };
     r.onresult = (e) => {
@@ -403,7 +362,6 @@ function stop() {
         recognizer = null;
     }
     if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-    stopMeter();
     recBtn.textContent = '▶ Начать';
     recBtn.classList.add('secondary');
     micSelect.disabled = false;
@@ -446,6 +404,7 @@ async function makeSummary() {
 recBtn.onclick = () => recording ? stop() : start();
 resetBtn.onclick = () => {
     finalText = '';
+    lastFinal = '';
     interimText = '';
     transcriptEl.innerHTML = '<span class="empty">Нажмите "Начать" и говорите в микрофон...</span>';
     summaryEl.innerHTML = '<span class="empty">Текст появится после накопления речи и нажатия кнопки.</span>';
