@@ -258,30 +258,12 @@ async function loadDevices() {
 // ── Визуализация уровня ──────────────────────
 function startMeter() {
     stopMeter();
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 1024;
-    analyser.smoothingTimeConstant = 0.5;
-    if (stream) {
-        const src = audioCtx.createMediaStreamSource(stream);
-        src.connect(analyser);
-    }
-    const data = new Uint8Array(analyser.frequencyBinCount);
+    let t = 0;
     const draw = () => {
-        if (!analyser) return;
-        if (stream && stream.getTracks().some(t => t.readyState === 'live')) {
-            analyser.getByteTimeDomainData(data);
-            let sum = 0;
-            for (let i = 0; i < data.length; i++) {
-                const v = (data[i] - 128) / 128;
-                sum += v * v;
-            }
-            const rms = Math.sqrt(sum / data.length);
-            const pct = Math.min(100, rms * 220);
-            meterFill.style.width = pct + '%';
-        } else {
-            meterFill.style.width = '0%';
-        }
+        // без отдельного потока микрофона показываем пульсацию-анимацию
+        t += 0.04;
+        const pct = 25 + 40 * (0.5 + 0.5 * Math.sin(t));
+        meterFill.style.width = Math.min(100, pct) + '%';
         raf = requestAnimationFrame(draw);
     };
     draw();
@@ -289,7 +271,7 @@ function startMeter() {
 
 function stopMeter() {
     if (raf) { cancelAnimationFrame(raf); raf = null; }
-    if (audioCtx) { audioCtx.close(); audioCtx = null; }
+    audioCtx = null;
     analyser = null;
     meterFill.style.width = '0%';
 }
@@ -310,10 +292,9 @@ function start() {
     r.interimResults = true;
     r.maxAlternatives = 1;
 
-    // поток для визуализатора уровня (Web Speech API использует свой микрофон)
-    navigator.mediaDevices.getUserMedia({ audio: micSelect.value ? { deviceId: { exact: micSelect.value } } : true })
-        .then((s) => { stream = s; startMeter(); })
-        .catch(() => { /* визуализатор не критичен */ });
+    // НЕ держим отдельный поток микрофона (конфликтует с Web Speech на Android).
+    // Показываем анимацию-пульсацию вместо реального уровня RMS.
+    startMeter();
 
     r.onstart = () => { recording = true; setStatus('Слушаю...', 'rec'); };
     r.onresult = (e) => {
