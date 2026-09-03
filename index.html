@@ -283,6 +283,26 @@ function pickRecognition() {
     return new SR();
 }
 
+// Добавляет новый фрагмент в finalText, исключая повторы (Android шлёт их заново)
+function appendDedup(t) {
+    if (!t) return false;
+    const norm = (s) => s.toLowerCase().replace(/[«»"'.,!?;:()]/g, '').trim();
+    const nt = norm(t);
+    if (!nt) return false;
+    const tail = norm(finalText);
+    const words = nt.split(/\s+/);
+    // если новые слова полностью уже в конце — пропускаем (дубль)
+    if (tail.endsWith(' ' + nt) || tail === nt) return false;
+    // если совпадает последние min(3, все слова) с хвостом — тоже дубль
+    const minLen = Math.min(words.length, 3);
+    if (minLen > 0) {
+        const prefix = words.slice(0, minLen).join(' ');
+        if (tail.endsWith(' ' + prefix)) return false;
+    }
+    finalText = finalText ? finalText + ' ' + t : t;
+    return true;
+}
+
 function start() {
     const r = pickRecognition();
     if (!r) return;
@@ -299,14 +319,20 @@ function start() {
     r.onstart = () => { recording = true; setStatus('Слушаю...', 'rec'); };
     r.onresult = (e) => {
         interimText = '';
+        const added = [];
         for (let i = e.resultIndex; i < e.results.length; i++) {
             const res = e.results[i];
             const t = res[0].transcript.trim();
             if (res.isFinal) {
-                finalText = finalText ? finalText + ' ' + t : t;
+                added.push(t);
             } else {
                 interimText += ' ' + t;
             }
+        }
+        // Android часто присылает уже записанный фрагмент заново при перезапуске.
+        // Дедуплицируем: не добавляем, если начало нового совпадает с хвостом уже записанного.
+        for (const t of added) {
+            if (appendDedup(t)) break;
         }
         renderTranscript();
         updateWords();
