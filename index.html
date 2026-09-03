@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Живой конспект встречи</title>
+<style>
+:root {
+    --bg: #0f1117;
+    --panel: #1a1d27;
+    --border: #2a2f3d;
+    --accent: #4f8cff;
+    --text: #e6e8ee;
+    --muted: #8b90a0;
+    --arrow: #4f5a6b;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: "Segoe UI", -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 24px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+}
+header h1 { font-size: 18px; font-weight: 600; }
+#status {
+    font-size: 13px; color: var(--muted);
+    display: flex; align-items: center; gap: 8px;
+}
+#dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #3a3f4e; display: inline-block;
+}
+#dot.on { background: #f0a500; box-shadow: 0 0 8px #f0a500; animation: pulse 1s infinite; }
+#dot.rec { background: #e5484d; box-shadow: 0 0 8px #e5484d; animation: pulse 0.6s infinite; }
+@keyframes pulse { 50% { opacity: 0.5; } }
+.spacer { flex: 1; }
+button {
+    background: var(--accent); color: white; border: none;
+    padding: 8px 18px; border-radius: 8px; font-size: 14px;
+    cursor: pointer; transition: filter 0.15s;
+}
+button:hover { filter: brightness(1.1); }
+button.secondary {
+    background: #2a2f3d; color: var(--text);
+    border: 1px solid var(--border);
+}
+#mic-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 24px; background: #14161e;
+    border-bottom: 1px solid var(--border);
+}
+#mic-row label { font-size: 13px; color: var(--muted); }
+#mic-select {
+    background: #1a1d27; color: var(--text); border: 1px solid var(--border);
+    padding: 6px 10px; border-radius: 8px; font-size: 13px; max-width: 220px;
+}
+#mic-refresh {
+    background: #1a1d27; border: 1px solid var(--border);
+    padding: 6px 12px;
+}
+#meter-wrap {
+    margin-left: auto; display: flex; align-items: center; gap: 8px;
+}
+#meter-label { font-size: 11px; color: var(--muted); }
+#meter {
+    width: 160px; height: 12px; background: #0a0c12;
+    border-radius: 6px; border: 1px solid #333a4a; overflow: hidden;
+}
+#meter-fill {
+    height: 100%; width: 0%; background: linear-gradient(90deg,#2ecc71,#f1c40f,#e74c3c);
+    transition: width 0.08s ease-out;
+}
+
+main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    padding: 16px 24px;
+    min-height: 0;
+}
+.panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+.panel h2 {
+    display: flex; align-items: center;
+    font-size: 13px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--muted); font-weight: 600;
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+}
+.panel h2 .count {
+    margin-left: auto; background: var(--border); border-radius: 6px;
+    padding: 2px 8px; font-size: 12px;
+}
+#transcript, #summary {
+    flex: 1; overflow-y: auto; padding: 16px;
+    font-size: 15px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+}
+#transcript .interim { color: var(--muted); font-style: italic; }
+#summary {
+    color: var(--text); font-size: 14px; line-height: 1.7;
+}
+#summary h3 { color: var(--accent); margin: 14px 0 6px; font-size: 15px; }
+#summary ul { padding-left: 22px; margin: 6px 0; }
+#summary li { margin: 4px 0; }
+#sum-meta { padding: 8px 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px; }
+#sum-btn { align-self: center; margin: 10px; }
+.empty { color: var(--muted); font-style: italic; }
+
+/* ── Мобильные устройства (Android/телефон) ── */
+@media (max-width: 800px) {
+    main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; gap: 10px; padding: 10px 12px; }
+    header { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+    header h1 { font-size: 15px; width: 100%; }
+    #status { font-size: 12px; }
+    .spacer { flex: 1 1 100%; order: 2; }
+    button { padding: 10px 20px; font-size: 15px; min-height: 44px; }
+    #rec-btn { flex: 1; }
+    #reset-btn { flex: 1; }
+    #mic-row { flex-wrap: wrap; gap: 8px; padding: 8px 12px; }
+    #mic-select { max-width: 100%; flex: 1; min-width: 0; }
+    #meter-wrap { margin-left: 0; flex: 1 1 100%; }
+    #meter { flex: 1; }
+    #transcript, #summary { font-size: 16px; }
+    .panel h2 { padding: 10px 12px; }
+    #sum-btn { width: calc(100% - 24px); margin: 10px 12px; min-height: 44px; }
+}
+</style>
+</head>
+<body>
+<header>
+    <h1>Живой конспект встречи</h1>
+    <div id="status"><span id="dot"></span><span id="status-text">Готово</span></div>
+    <div class="spacer"></div>
+    <button id="rec-btn" class="secondary">▶ Начать</button>
+    <button id="reset-btn" class="secondary">Сброс</button>
+</header>
+
+<div id="mic-row">
+    <label for="mic-select">🎤 Микрофон:</label>
+    <select id="mic-select"></select>
+    <button id="mic-refresh">🔄 Обновить</button>
+    <div id="meter-wrap">
+        <span id="meter-label">Уровень</span>
+        <div id="meter"><div id="meter-fill"></div></div>
+    </div>
+</div>
+
+<main>
+    <section class="panel">
+        <h2>Живой текст <span class="count" id="word-count">0 слов</span></h2>
+        <div id="transcript"><span class="empty">Нажмите "Начать" и говорите в микрофон...</span></div>
+    </section>
+    <section class="panel">
+        <h2>Конспект AI</h2>
+        <button id="sum-btn">📝 Сгенерировать конспект</button>
+        <div id="summary"><span class="empty">Текст появится после накопления речи и нажатия кнопки.</span></div>
+        <div id="sum-meta"></div>
+    </section>
+</main>
+
+<script>
+const transcriptEl = document.getElementById('transcript');
+const summaryEl = document.getElementById('summary');
+const statusEl = document.getElementById('status-text');
+const dotEl = document.getElementById('dot');
+const recBtn = document.getElementById('rec-btn');
+const resetBtn = document.getElementById('reset-btn');
+const sumBtn = document.getElementById('sum-btn');
+const wordCountEl = document.getElementById('word-count');
+const sumMeta = document.getElementById('sum-meta');
+const micSelect = document.getElementById('mic-select');
+const micRefresh = document.getElementById('mic-refresh');
+const meterFill = document.getElementById('meter-fill');
+
+let recognizer = null;
+let stream = null;
+let analyser = null;
+let audioCtx = null;
+let raf = null;
+let recording = false;
+let selectedMicId = null;
+let finalText = '';
+let interimText = '';
+
+const GROQ_URL = '/api/groq';
+
+function setStatus(text, state) {
+    statusEl.textContent = text;
+    dotEl.className = state || '';
+}
+
+function updateWords() {
+    const words = transcriptEl.innerText.trim().split(/\s+/).filter(Boolean).length;
+    wordCountEl.textContent = words + ' слов';
+}
+
+function renderMarkdown(text) {
+    let html = text
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const lines = html.split('\n');
+    let out = '';
+    let inList = false;
+    for (const line of lines) {
+        const m = line.match(/^\s*[-*]\s+(.*)/);
+        const h = line.match(/^######?\s+(.*)/);
+        if (m) {
+            if (!inList) { out += '<ul>'; inList = true; }
+            out += `<li>${m[1]}</li>`;
+        } else {
+            if (inList) { out += '</ul>'; inList = false; }
+            if (h) out += `<h3>${h[1]}</h3>`;
+            else if (line.trim()) out += `<p>${line}</p>`;
+        }
+    }
+    if (inList) out += '</ul>';
+    return out;
+}
+
+// ── Выбор микрофона ──────────────────────────
+async function loadDevices() {
+    try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const mics = devices.filter(d => d.kind === 'audioinput');
+        if (!mics.length) { micSelect.innerHTML = '<option value="">Нет микрофонов</option>'; return; }
+        const prevId = selectedMicId || micSelect.value;
+        micSelect.innerHTML = '';
+        mics.forEach((m, i) => {
+            const label = m.label || `Микрофон ${i + 1}`;
+            const opt = document.createElement('option');
+            opt.value = m.deviceId;
+            opt.textContent = label;
+            micSelect.appendChild(opt);
+        });
+        const target = [...mics].find(m => m.deviceId === prevId);
+        micSelect.value = prevId && target ? prevId : mics[0].deviceId;
+    } catch (e) { console.warn('enum err', e); }
+}
+
+// ── Визуализация уровня ──────────────────────
+function startMeter() {
+    stopMeter();
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.5;
+    if (stream) {
+        const src = audioCtx.createMediaStreamSource(stream);
+        src.connect(analyser);
+    }
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    const draw = () => {
+        if (!analyser) return;
+        if (stream && stream.getTracks().some(t => t.readyState === 'live')) {
+            analyser.getByteTimeDomainData(data);
+            let sum = 0;
+            for (let i = 0; i < data.length; i++) {
+                const v = (data[i] - 128) / 128;
+                sum += v * v;
+            }
+            const rms = Math.sqrt(sum / data.length);
+            const pct = Math.min(100, rms * 220);
+            meterFill.style.width = pct + '%';
+        } else {
+            meterFill.style.width = '0%';
+        }
+        raf = requestAnimationFrame(draw);
+    };
+    draw();
+}
+
+function stopMeter() {
+    if (raf) { cancelAnimationFrame(raf); raf = null; }
+    if (audioCtx) { audioCtx.close(); audioCtx = null; }
+    analyser = null;
+    meterFill.style.width = '0%';
+}
+
+// ── Google Web Speech API ────────────────────
+function pickRecognition() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { alert('Ваш браузер не поддерживает Web Speech API. Используйте Chrome или Edge.'); return null; }
+    return new SR();
+}
+
+function start() {
+    const r = pickRecognition();
+    if (!r) return;
+    recognizer = r;
+    r.lang = 'ru-RU';
+    r.continuous = true;
+    r.interimResults = true;
+    r.maxAlternatives = 1;
+
+    // поток для визуализатора уровня (Web Speech API использует свой микрофон)
+    navigator.mediaDevices.getUserMedia({ audio: micSelect.value ? { deviceId: { exact: micSelect.value } } : true })
+        .then((s) => { stream = s; startMeter(); })
+        .catch(() => { /* визуализатор не критичен */ });
+
+    r.onstart = () => { recording = true; setStatus('Слушаю...', 'rec'); };
+    r.onresult = (e) => {
+        interimText = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+            const res = e.results[i];
+            const t = res[0].transcript.trim();
+            if (res.isFinal) {
+                finalText = finalText ? finalText + ' ' + t : t;
+            } else {
+                interimText += ' ' + t;
+            }
+        }
+        renderTranscript();
+        updateWords();
+    };
+    r.onerror = (e) => {
+        console.warn('recog error', e.error);
+        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+            setStatus('Нет доступа к микрофону', '');
+            stop();
+        } else if (e.error === 'network') {
+            setStatus('Сетевая ошибка распознавания', '');
+            stop();
+        } else if (e.error !== 'no-speech' && e.error !== 'aborted') {
+            setStatus('Ошибка: ' + e.error, '');
+        }
+    };
+    r.onend = () => {
+        // Google сама обрывает распознавание на тишине — перезапускаем для непрерывности
+        if (recording) {
+            try { r.start(); } catch (err) { /* ignore */ }
+        }
+    };
+
+    try {
+        r.start();
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+function renderTranscript() {
+    if (transcriptEl.querySelector('.empty')) transcriptEl.innerHTML = '';
+    let html = escapeHtml(finalText);
+    if (interimText) html += '<span class="interim">' + escapeHtml(interimText) + '</span>';
+    transcriptEl.innerHTML = html;
+    transcriptEl.scrollTop = transcriptEl.scrollHeight;
+}
+
+function escapeHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function stop() {
+    recording = false;
+    if (recognizer) {
+        try { recognizer.abort(); } catch (e) { /* ignore */ }
+        recognizer = null;
+    }
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+    stopMeter();
+    recBtn.textContent = '▶ Начать';
+    recBtn.classList.add('secondary');
+    micSelect.disabled = false;
+    micRefresh.disabled = false;
+    renderTranscript();
+    setStatus('Готово', 'on');
+}
+
+async function makeSummary() {
+    const text = finalText.trim();
+    if (!text) { sumMeta.textContent = 'Нет текста для конспекта.'; return; }
+    if (text.split(/\s+/).length < 25) { sumMeta.textContent = 'Накопите больше текста (минимум ~25 слов).'; return; }
+    sumMeta.textContent = 'Генерация конспекта...';
+    try {
+        const resp = await fetch(GROQ_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                temperature: 0.3,
+                messages: [
+                    { role: 'system', content: 'Ты — ассистент, который превращает сырой текст живой речи в краткий структурированный конспект на русском. Выдели ключевые темы, решения и пункты списками. Кратко, без воды.' },
+                    { role: 'user', content: text }
+                ]
+            })
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error?.message || 'HTTP ' + resp.status);
+        const out = data.choices[0].message.content.trim();
+        summaryEl.innerHTML = '';
+        summaryEl.innerHTML = renderMarkdown(out);
+        sumMeta.textContent = 'Готово';
+    } catch (err) {
+        console.error(err);
+        sumMeta.textContent = 'Ошибка конспекта: ' + err.message;
+    }
+}
+
+recBtn.onclick = () => recording ? stop() : start();
+resetBtn.onclick = () => {
+    finalText = '';
+    interimText = '';
+    transcriptEl.innerHTML = '<span class="empty">Нажмите "Начать" и говорите в микрофон...</span>';
+    summaryEl.innerHTML = '<span class="empty">Текст появится после накопления речи и нажатия кнопки.</span>';
+    wordCountEl.textContent = '0 слов';
+    sumMeta.textContent = '';
+};
+sumBtn.onclick = makeSummary;
+micSelect.onchange = () => { selectedMicId = micSelect.value; };
+micRefresh.onclick = loadDevices;
+
+// ── Разрешение на микрофон (чтобы enumerateDevices вернул метки) ──
+navigator.mediaDevices && navigator.mediaDevices.getUserMedia({ audio: true })
+    .then((s) => { s.getTracks().forEach(t => t.stop()); loadDevices(); })
+    .catch(() => loadDevices());
+</script>
+</body>
+</html>
