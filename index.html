@@ -335,15 +335,17 @@ function start() {
         if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
             setStatus('Нет доступа к микрофону', '');
             stop();
-        } else if (e.error === 'network') {
-            setStatus('Сетевая ошибка распознавания', '');
-            stop();
-        } else if (e.error !== 'no-speech' && e.error !== 'aborted') {
-            setStatus('Ошибка: ' + e.error, '');
+            return;
+        }
+        // network / no-speech / aborted — транзиентные, не останавливаем
+        // просто оставляем ждать; onend перезапустит распознавание
+        if (e.error === 'network') {
+            setStatus('Переподключаюсь...', 'rec');
         }
     };
     r.onend = () => {
-        // Google сама обрывает распознавание на тишине — перезапускаем для непрерывности
+        // Google сама обрывает распознавание на тишине/сети — перезапускаем
+        // (необходимо для непрерывной работы, особенно на Android)
         if (recording) {
             try { r.start(); } catch (err) { /* ignore */ }
         }
