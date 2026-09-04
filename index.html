@@ -172,6 +172,9 @@ main {
     </section>
 </main>
 
+<pre id="diag" style="display:none;position:fixed;bottom:0;left:0;right:0;background:#000;color:#0f0;font-size:10px;padding:6px;margin:0;max-height:120px;overflow:auto;z-index:999;"></pre>
+<button id="diag-btn" style="position:fixed;bottom:6px;right:6px;z-index:1000;padding:2px 8px;font-size:11px;" title="Показать диагностику">🐞</button>
+
 <script>
 const transcriptEl = document.getElementById('transcript');
 const summaryEl = document.getElementById('summary');
@@ -197,6 +200,17 @@ const GROQ_URL = 'https://meeting-notes.vadi714g.workers.dev/';
 function setStatus(text, state) {
     statusEl.textContent = text;
     dotEl.className = state || '';
+}
+
+// Диагностика распознавания (показывает причины неработоспособности)
+const diagLog = [];
+function diag(tag, detail) {
+    const line = Date.now().toString().slice(-5) + ' ' + tag + (detail !== undefined ? ': ' + detail : '');
+    diagLog.push(line);
+    if (diagLog.length > 20) diagLog.shift();
+    const el = document.getElementById('diag');
+    if (el) el.textContent = diagLog.join('\n');
+    console.log('[diag]', line);
 }
 
 function updateWords() {
@@ -306,19 +320,21 @@ function start() {
         } catch (e) { /* микрофон недоступен — Web Speech сам попробует */ }
     })();
 
-    r.onstart = () => { recording = true; setStatus('Слушаю...', 'rec'); };
+    r.onstart = () => { recording = true; setStatus('Слушаю...', 'rec'); diag('onstart'); };
     r.onresult = (e) => {
         interimText = '';
         const added = [];
+        let nFinal = 0, nInterim = 0;
         for (let i = e.resultIndex; i < e.results.length; i++) {
             const res = e.results[i];
             const t = res[0].transcript.trim();
             if (res.isFinal) {
-                added.push(t);
+                added.push(t); nFinal++;
             } else {
-                interimText += ' ' + t;
+                interimText += ' ' + t; nInterim++;
             }
         }
+        diag('onresult', `final=${nFinal} interim=${nInterim} added="${added.join(' | ')}"`);
         // Android часто присылает уже записанный фрагмент заново при перезапуске.
         // Дедуплицируем: не добавляем, если начало нового совпадает с хвостом уже записанного.
         for (const t of added) {
@@ -329,6 +345,7 @@ function start() {
     };
     r.onerror = (e) => {
         console.warn('recog error', e.error);
+        diag('onerror', e.error);
         if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
             setStatus('Нет доступа к микрофону', '');
             stop();
@@ -341,6 +358,7 @@ function start() {
         }
     };
     r.onend = () => {
+        diag('onend', 'recording=' + recording);
         // Google закрывает сессию после паузы. Перезапускаем через короткую задержку,
         // чтобы избежать конфликта и держать распознавание непрерывным (особенно Android).
         if (recording) {
@@ -435,6 +453,13 @@ resetBtn.onclick = () => {
 sumBtn.onclick = makeSummary;
 micSelect.onchange = () => { selectedMicId = micSelect.value; };
 micRefresh.onclick = loadDevices;
+
+// ── Кнопка диагностики ──
+document.getElementById('diag-btn').onclick = () => {
+    const el = document.getElementById('diag');
+    const show = el.style.display === 'none';
+    el.style.display = show ? 'block' : 'none';
+};
 
 // ── Разрешение на микрофон (чтобы enumerateDevices вернул метки) ──
 navigator.mediaDevices && navigator.mediaDevices.getUserMedia({ audio: true })
