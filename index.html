@@ -290,7 +290,7 @@ function start() {
     if (!r) return;
     recognizer = r;
     r.lang = 'ru-RU';
-    r.continuous = true;
+    r.continuous = false;      // на Android непрерывный режим ненадёжен — одиночные сессии
     r.interimResults = true;
     r.maxAlternatives = 1;
 
@@ -341,10 +341,18 @@ function start() {
         }
     };
     r.onend = () => {
-        // Google сама обрывает распознавание на тишине/сети — перезапускаем
-        // (необходимо для непрерывной работы, особенно на Android)
+        // Google закрывает сессию после паузы. Перезапускаем через короткую задержку,
+        // чтобы избежать конфликта и держать распознавание непрерывным (особенно Android).
         if (recording) {
-            try { r.start(); } catch (err) { /* ignore */ }
+            if (r._restartTimer) clearTimeout(r._restartTimer);
+            r._restartTimer = setTimeout(() => {
+                if (recording && recognizer === r) {
+                    try {
+                        setStatus('Слушаю...', 'rec');
+                        r.start();
+                    } catch (err) { /* ignore */ }
+                }
+            }, 350);
         }
     };
 
@@ -370,6 +378,7 @@ function escapeHtml(s) {
 function stop() {
     recording = false;
     if (recognizer) {
+        if (recognizer._restartTimer) { clearTimeout(recognizer._restartTimer); recognizer._restartTimer = null; }
         try { recognizer.abort(); } catch (e) { /* ignore */ }
         recognizer = null;
     }
