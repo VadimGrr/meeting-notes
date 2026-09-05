@@ -176,9 +176,6 @@ main {
     </section>
 </main>
 
-<pre id="diag" style="display:none;position:fixed;bottom:0;left:0;right:0;background:#000;color:#0f0;font-size:10px;padding:6px;margin:0;max-height:120px;overflow:auto;z-index:999;"></pre>
-<button id="diag-btn" style="position:fixed;bottom:6px;right:6px;z-index:1000;padding:2px 8px;font-size:11px;" title="Показать диагностику">🐞</button>
-
 <script>
 const transcriptEl = document.getElementById('transcript');
 const summaryEl = document.getElementById('summary');
@@ -191,13 +188,13 @@ const wordCountEl = document.getElementById('word-count');
 const sumMeta = document.getElementById('sum-meta');
 const micSelect = document.getElementById('mic-select');
 const micRefresh = document.getElementById('mic-refresh');
+const meterFill = document.getElementById('meter-fill');
 
 let recognizer = null;
 let stream = null;
 let analyser = null;
 let audioCtx = null;
 let raf = null;
-const meterFill = document.getElementById('meter-fill');
 let recording = false;
 let selectedMicId = null;
 let finalText = '';
@@ -208,17 +205,6 @@ const GROQ_URL = 'https://meeting-notes.vadi714g.workers.dev/';
 function setStatus(text, state) {
     statusEl.textContent = text;
     dotEl.className = state || '';
-}
-
-// Диагностика распознавания (показывает причины неработоспособности)
-const diagLog = [];
-function diag(tag, detail) {
-    const line = Date.now().toString().slice(-5) + ' ' + tag + (detail !== undefined ? ': ' + detail : '');
-    diagLog.push(line);
-    if (diagLog.length > 20) diagLog.shift();
-    const el = document.getElementById('diag');
-    if (el) el.textContent = diagLog.join('\n');
-    console.log('[diag]', line);
 }
 
 function updateWords() {
@@ -269,66 +255,15 @@ async function loadDevices() {
     } catch (e) { console.warn('enum err', e); }
 }
 
-// ── Google Web Speech API ────────────────────
-function pickRecognition() {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { alert('Ваш браузер не поддерживает Web Speech API. Используйте Chrome или Edge.'); return null; }
-    return new SR();
-}
-
-let lastFinal = '';
-
-// Добавляет новый фрагмент в finalText, исключая повторы (Android шлёт их заново)
-function appendDedup(t) {
-    if (!t) return false;
-    const norm = (s) => s.toLowerCase()
-        .replace(/[«»"'.,!?;:()\-—]/g, ' ')
-        .replace(/\s+/g, ' ').trim();
-    const nt = norm(t);
-    if (!nt) return false;
-    const words = nt.split(' ');
-
-    // 1) Полное совпадение с последним добавленным фрагментом → дубль
-    if (lastFinal && norm(lastFinal) === nt) return false;
-
-    // 2) Новый текст целиком уже есть в конце всей записи → дубль
-    const tail = norm(finalText);
-    if (tail.endsWith(' ' + nt) || tail === nt) return false;
-
-    // 3) Начало нового (первые min(4, все) слова) совпадает с хвостом → дубль
-    const minLen = Math.min(words.length, 4);
-    if (minLen > 0) {
-        const prefix = words.slice(0, minLen).join(' ');
-        if (tail.endsWith(' ' + prefix)) return false;
-    }
-
-    finalText = finalText ? finalText + ' ' + t : t;
-    lastFinal = t;
-    return true;
-}
-
-// Визуализатор уровня — также принудительно инициализирует аудио и держит микрофон,
-// что критично для работы Web Speech на Android
+// ── Визуализация уровня ──────────────────────
 function startMeter() {
     stopMeter();
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 1024;
-    analyser.smoothingTimeConstant = 0.5;
-    const src = audioCtx.createMediaStreamSource(stream);
-    src.connect(analyser);
-    const data = new Uint8Array(analyser.frequencyBinCount);
+    let t = 0;
     const draw = () => {
-        if (!analyser) return;
-        analyser.getByteTimeDomainData(data);
-        let sum = 0;
-        for (let i = 0; i < data.length; i++) {
-            const v = (data[i] - 128) / 128;
-            sum += v * v;
-        }
-        const rms = Math.sqrt(sum / data.length);
-        const pct = Math.min(100, rms * 220);
-        meterFill.style.width = pct + '%';
+        // без отдельного потока микрофона показываем пульсацию-анимацию
+        t += 0.04;
+        const pct = 25 + 40 * (0.5 + 0.5 * Math.sin(t));
+        meterFill.style.width = Math.min(100, pct) + '%';
         raf = requestAnimationFrame(draw);
     };
     draw();
@@ -336,9 +271,36 @@ function startMeter() {
 
 function stopMeter() {
     if (raf) { cancelAnimationFrame(raf); raf = null; }
-    if (audioCtx) { audioCtx.close(); audioCtx = null; }
+    audioCtx = null;
     analyser = null;
     meterFill.style.width = '0%';
+}
+
+// ── Google Web Speech API ────────────────────
+function pickRecognition() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { alert('Ваш браузер не поддерживает Web Speech API. Используйте Chrome или Edge.'); return null; }
+    return new SR();
+}
+
+// Добавляет новый фрагмент в finalText, исключая повторы (Android шлёт их заново)
+function appendDedup(t) {
+    if (!t) return false;
+    const norm = (s) => s.toLowerCase().replace(/[«»"'.,!?;:()]/g, '').trim();
+    const nt = norm(t);
+    if (!nt) return false;
+    const tail = norm(finalText);
+    const words = nt.split(/\s+/);
+    // если новые слова полностью уже в конце — пропускаем (дубль)
+    if (tail.endsWith(' ' + nt) || tail === nt) return false;
+    // если совпадает последние min(3, все слова) с хвостом — тоже дубль
+    const minLen = Math.min(words.length, 3);
+    if (minLen > 0) {
+        const prefix = words.slice(0, minLen).join(' ');
+        if (tail.endsWith(' ' + prefix)) return false;
+    }
+    finalText = finalText ? finalText + ' ' + t : t;
+    return true;
 }
 
 function start() {
@@ -346,27 +308,27 @@ function start() {
     if (!r) return;
     recognizer = r;
     r.lang = 'ru-RU';
-    r.continuous = false; // одиночные сессии надёжнее: continuous даёт network/aborted-гонку
+    r.continuous = true;
     r.interimResults = true;
     r.maxAlternatives = 1;
 
-    // НЕ захватываем микрофон сами: Web Speech API сам управляет микрофоном.
-    // Лишний getUserMedia вызывает 'aborted' — распознавание прерывается сразу после старта.
-    r.onstart = () => { recording = true; setStatus('Слушаю...', 'rec'); diag('onstart'); };
+    // НЕ держим отдельный поток микрофона (конфликтует с Web Speech на Android).
+    // Показываем анимацию-пульсацию вместо реального уровня RMS.
+    startMeter();
+
+    r.onstart = () => { recording = true; setStatus('Слушаю...', 'rec'); };
     r.onresult = (e) => {
         interimText = '';
         const added = [];
-        let nFinal = 0, nInterim = 0;
         for (let i = e.resultIndex; i < e.results.length; i++) {
             const res = e.results[i];
             const t = res[0].transcript.trim();
             if (res.isFinal) {
-                added.push(t); nFinal++;
+                added.push(t);
             } else {
-                interimText += ' ' + t; nInterim++;
+                interimText += ' ' + t;
             }
         }
-        diag('onresult', `final=${nFinal} interim=${nInterim} added="${added.join(' | ')}"`);
         // Android часто присылает уже записанный фрагмент заново при перезапуске.
         // Дедуплицируем: не добавляем, если начало нового совпадает с хвостом уже записанного.
         for (const t of added) {
@@ -377,7 +339,6 @@ function start() {
     };
     r.onerror = (e) => {
         console.warn('recog error', e.error);
-        diag('onerror', e.error);
         if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
             setStatus('Нет доступа к микрофону', '');
             stop();
@@ -390,19 +351,10 @@ function start() {
         }
     };
     r.onend = () => {
-        diag('onend', 'recording=' + recording);
+        // Google сама обрывает распознавание на тишине/сети — перезапускаем
+        // (необходимо для непрерывной работы, особенно на Android)
         if (recording) {
-            if (r._restartTimer) clearTimeout(r._restartTimer);
-            r._restartTimer = setTimeout(() => {
-                if (recording && recognizer === r) {
-                    try {
-                        setStatus('Слушаю...', 'rec');
-                        r.start();
-                    } catch (err) {
-                        diag('restart-fail', String(err && err.name));
-                    }
-                }
-            }, 800);
+            try { r.start(); } catch (err) { /* ignore */ }
         }
     };
 
@@ -428,11 +380,11 @@ function escapeHtml(s) {
 function stop() {
     recording = false;
     if (recognizer) {
-        if (recognizer._restartTimer) { clearTimeout(recognizer._restartTimer); recognizer._restartTimer = null; }
         try { recognizer.abort(); } catch (e) { /* ignore */ }
         recognizer = null;
     }
     if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+    stopMeter();
     recBtn.textContent = '▶ Начать';
     recBtn.classList.add('secondary');
     micSelect.disabled = false;
@@ -475,7 +427,6 @@ async function makeSummary() {
 recBtn.onclick = () => recording ? stop() : start();
 resetBtn.onclick = () => {
     finalText = '';
-    lastFinal = '';
     interimText = '';
     transcriptEl.innerHTML = '<span class="empty">Нажмите "Начать" и говорите в микрофон...</span>';
     summaryEl.innerHTML = '<span class="empty">Текст появится после накопления речи и нажатия кнопки.</span>';
@@ -485,13 +436,6 @@ resetBtn.onclick = () => {
 sumBtn.onclick = makeSummary;
 micSelect.onchange = () => { selectedMicId = micSelect.value; };
 micRefresh.onclick = loadDevices;
-
-// ── Кнопка диагностики ──
-document.getElementById('diag-btn').onclick = () => {
-    const el = document.getElementById('diag');
-    const show = el.style.display === 'none';
-    el.style.display = show ? 'block' : 'none';
-};
 
 // ── Разрешение на микрофон (чтобы enumerateDevices вернул метки) ──
 navigator.mediaDevices && navigator.mediaDevices.getUserMedia({ audio: true })
