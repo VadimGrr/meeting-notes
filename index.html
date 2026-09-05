@@ -157,6 +157,10 @@ main {
     <label for="mic-select">🎤 Микрофон:</label>
     <select id="mic-select"></select>
     <button id="mic-refresh">🔄 Обновить</button>
+    <div id="meter-wrap">
+        <span id="meter-label">Уровень</span>
+        <div id="meter"><div id="meter-fill"></div></div>
+    </div>
 </div>
 
 <main>
@@ -190,6 +194,10 @@ const micRefresh = document.getElementById('mic-refresh');
 
 let recognizer = null;
 let stream = null;
+let analyser = null;
+let audioCtx = null;
+let raf = null;
+const meterFill = document.getElementById('meter-fill');
 let recording = false;
 let selectedMicId = null;
 let finalText = '';
@@ -299,6 +307,40 @@ function appendDedup(t) {
     return true;
 }
 
+// Визуализатор уровня — также принудительно инициализирует аудио и держит микрофон,
+// что критично для работы Web Speech на Android
+function startMeter() {
+    stopMeter();
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.5;
+    const src = audioCtx.createMediaStreamSource(stream);
+    src.connect(analyser);
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    const draw = () => {
+        if (!analyser) return;
+        analyser.getByteTimeDomainData(data);
+        let sum = 0;
+        for (let i = 0; i < data.length; i++) {
+            const v = (data[i] - 128) / 128;
+            sum += v * v;
+        }
+        const rms = Math.sqrt(sum / data.length);
+        const pct = Math.min(100, rms * 220);
+        meterFill.style.width = pct + '%';
+        raf = requestAnimationFrame(draw);
+    };
+    draw();
+}
+
+function stopMeter() {
+    if (raf) { cancelAnimationFrame(raf); raf = null; }
+    if (audioCtx) { audioCtx.close(); audioCtx = null; }
+    analyser = null;
+    meterFill.style.width = '0%';
+}
+
 function start() {
     const r = pickRecognition();
     if (!r) return;
@@ -308,15 +350,15 @@ function start() {
     r.interimResults = true;
     r.maxAlternatives = 1;
 
-    // Захват микрофона заранее помогает Web Speech на Android получать доступ.
-    // Держим поток, но без визуализации (не конфликтует с распознаванием).
+    // Захват микрофона + визуализатор уровня. AudioContext+Analyser+поток вместе
+    // гарантируют, что микрофон активен и Web Speech на Android получает доступ.
     (async () => {
         try {
             const s = await navigator.mediaDevices.getUserMedia({
                 audio: micSelect.value ? { deviceId: { exact: micSelect.value } } : true
             });
-            if (recording) stream = s;
-            else s.getTracks().forEach(t => t.stop());
+            stream = s;
+            startMeter();
         } catch (e) { /* микрофон недоступен — Web Speech сам попробует */ }
     })();
 
@@ -401,6 +443,7 @@ function stop() {
         recognizer = null;
     }
     if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+    stopMeter();
     recBtn.textContent = '▶ Начать';
     recBtn.classList.add('secondary');
     micSelect.disabled = false;
