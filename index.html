@@ -346,7 +346,7 @@ function start() {
     if (!r) return;
     recognizer = r;
     r.lang = 'ru-RU';
-    r.continuous = true;
+    r.continuous = false; // одиночные сессии надёжнее: continuous даёт network/aborted-гонку
     r.interimResults = true;
     r.maxAlternatives = 1;
 
@@ -391,8 +391,6 @@ function start() {
     };
     r.onend = () => {
         diag('onend', 'recording=' + recording);
-        // Google закрывает сессию после паузы. Перезапускаем с небольшой задержкой,
-        // чтобы браузер успел разрядить состояние и не выдал 'aborted' на restart.
         if (recording) {
             if (r._restartTimer) clearTimeout(r._restartTimer);
             r._restartTimer = setTimeout(() => {
@@ -401,15 +399,10 @@ function start() {
                         setStatus('Слушаю...', 'rec');
                         r.start();
                     } catch (err) {
-                        diag('restart-retry', String(err && err.name));
-                        setTimeout(() => {
-                            if (recording && recognizer === r) {
-                                try { r.start(); } catch (e2) { diag('restart-fail', String(e2 && e2.name)); }
-                            }
-                        }, 120);
+                        diag('restart-fail', String(err && err.name));
                     }
                 }
-            }, 500);
+            }, 800);
         }
     };
 
