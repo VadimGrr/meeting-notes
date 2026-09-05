@@ -346,7 +346,7 @@ function start() {
     if (!r) return;
     recognizer = r;
     r.lang = 'ru-RU';
-    r.continuous = false;      // на Android непрерывный режим ненадёжен — одиночные сессии
+    r.continuous = true;
     r.interimResults = true;
     r.maxAlternatives = 1;
 
@@ -401,18 +401,22 @@ function start() {
     };
     r.onend = () => {
         diag('onend', 'recording=' + recording);
-        // Google закрывает сессию после паузы. Перезапускаем через короткую задержку,
-        // чтобы избежать конфликта и держать распознавание непрерывным (особенно Android).
+        // Google закрывает сессию после паузы — перезапускаем, чтобы держать
+        // распознавание непрерывным.
         if (recording) {
-            if (r._restartTimer) clearTimeout(r._restartTimer);
-            r._restartTimer = setTimeout(() => {
-                if (recording && recognizer === r) {
-                    try {
-                        setStatus('Слушаю...', 'rec');
-                        r.start();
-                    } catch (err) { /* ignore */ }
-                }
-            }, 350);
+            try {
+                setStatus('Слушаю...', 'rec');
+                r.start();
+            } catch (err) {
+                // Иногда start() сразу после onend бросает InvalidStateError —
+                // повторяем через 120мс
+                diag('restart-retry', String(err && err.name));
+                setTimeout(() => {
+                    if (recording && recognizer === r) {
+                        try { r.start(); } catch (e2) { diag('restart-fail', String(e2 && e2.name)); }
+                    }
+                }, 120);
+            }
         }
     };
 
