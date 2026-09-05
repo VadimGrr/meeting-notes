@@ -350,18 +350,8 @@ function start() {
     r.interimResults = true;
     r.maxAlternatives = 1;
 
-    // Захват микрофона + визуализатор уровня. AudioContext+Analyser+поток вместе
-    // гарантируют, что микрофон активен и Web Speech на Android получает доступ.
-    (async () => {
-        try {
-            const s = await navigator.mediaDevices.getUserMedia({
-                audio: micSelect.value ? { deviceId: { exact: micSelect.value } } : true
-            });
-            stream = s;
-            startMeter();
-        } catch (e) { /* микрофон недоступен — Web Speech сам попробует */ }
-    })();
-
+    // НЕ захватываем микрофон сами: Web Speech API сам управляет микрофоном.
+    // Лишний getUserMedia вызывает 'aborted' — распознавание прерывается сразу после старта.
     r.onstart = () => { recording = true; setStatus('Слушаю...', 'rec'); diag('onstart'); };
     r.onresult = (e) => {
         interimText = '';
@@ -401,22 +391,25 @@ function start() {
     };
     r.onend = () => {
         diag('onend', 'recording=' + recording);
-        // Google закрывает сессию после паузы — перезапускаем, чтобы держать
-        // распознавание непрерывным.
+        // Google закрывает сессию после паузы. Перезапускаем с небольшой задержкой,
+        // чтобы браузер успел разрядить состояние и не выдал 'aborted' на restart.
         if (recording) {
-            try {
-                setStatus('Слушаю...', 'rec');
-                r.start();
-            } catch (err) {
-                // Иногда start() сразу после onend бросает InvalidStateError —
-                // повторяем через 120мс
-                diag('restart-retry', String(err && err.name));
-                setTimeout(() => {
-                    if (recording && recognizer === r) {
-                        try { r.start(); } catch (e2) { diag('restart-fail', String(e2 && e2.name)); }
+            if (r._restartTimer) clearTimeout(r._restartTimer);
+            r._restartTimer = setTimeout(() => {
+                if (recording && recognizer === r) {
+                    try {
+                        setStatus('Слушаю...', 'rec');
+                        r.start();
+                    } catch (err) {
+                        diag('restart-retry', String(err && err.name));
+                        setTimeout(() => {
+                            if (recording && recognizer === r) {
+                                try { r.start(); } catch (e2) { diag('restart-fail', String(e2 && e2.name)); }
+                            }
+                        }, 120);
                     }
-                }, 120);
-            }
+                }
+            }, 500);
         }
     };
 
@@ -447,7 +440,6 @@ function stop() {
         recognizer = null;
     }
     if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-    stopMeter();
     recBtn.textContent = '▶ Начать';
     recBtn.classList.add('secondary');
     micSelect.disabled = false;
