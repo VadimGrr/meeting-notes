@@ -151,7 +151,9 @@ main {
     <div class="spacer"></div>
     <button id="rec-btn" class="secondary">▶ Начать</button>
     <button id="reset-btn" class="secondary">Сброс</button>
+    <button id="diag-btn" class="secondary" title="Показать лог распознавания">🐞</button>
 </header>
+<pre id="diag" hidden></pre>
 
 <div id="mic-row">
     <label for="mic-select">🎤 Микрофон:</label>
@@ -189,6 +191,18 @@ const sumMeta = document.getElementById('sum-meta');
 const micSelect = document.getElementById('mic-select');
 const micRefresh = document.getElementById('mic-refresh');
 const meterFill = document.getElementById('meter-fill');
+const diagBtn = document.getElementById('diag-btn');
+const diagEl = document.getElementById('diag');
+
+function diag(...args) {
+    const t = new Date().toISOString().slice(11, 23);
+    const line = t + ' ' + args.join(' ');
+    if (diagEl.hidden) diagEl.hidden = false;
+    diagEl.textContent += (diagEl.textContent ? '\n' : '') + line;
+    diagEl.scrollTop = diagEl.scrollHeight;
+    console.debug(line);
+}
+diagBtn.onclick = () => { diagEl.hidden = !diagEl.hidden; };
 
 let recognizer = null;
 let stream = null;
@@ -316,7 +330,7 @@ function start() {
     // Показываем анимацию-пульсацию вместо реального уровня RMS.
     startMeter();
 
-    r.onstart = () => { recording = true; setStatus('Слушаю...', 'rec'); };
+    r.onstart = () => { recording = true; setStatus('Слушаю...', 'rec'); diag('onstart'); };
     r.onresult = (e) => {
         interimText = '';
         const added = [];
@@ -329,6 +343,7 @@ function start() {
                 interimText += ' ' + t;
             }
         }
+        diag('onresult', 'added=' + added.length, 'interimLen=' + interimText.length, added[0]);
         // Android часто присылает уже записанный фрагмент заново при перезапуске.
         // Дедуплицируем: не добавляем, если начало нового совпадает с хвостом уже записанного.
         for (const t of added) {
@@ -339,6 +354,7 @@ function start() {
     };
     r.onerror = (e) => {
         console.warn('recog error', e.error);
+        diag('onerror', e.error);
         if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
             setStatus('Нет доступа к микрофону', '');
             stop();
@@ -351,17 +367,21 @@ function start() {
         }
     };
     r.onend = () => {
+        diag('onend', 'recording=' + recording);
         // Google сама обрывает распознавание на тишине/сети — перезапускаем
         // (необходимо для непрерывной работы, особенно на Android)
         if (recording) {
-            try { r.start(); } catch (err) { /* ignore */ }
+            try { r.start(); } catch (err) { diag('onend-restart-err', String(err)); }
         }
     };
 
+    diag('start', 'continuous=' + r.continuous);
     try {
         r.start();
+        diag('started');
     } catch (err) {
         console.error(err);
+        diag('start-err', String(err));
     }
 }
 
