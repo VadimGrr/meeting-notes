@@ -210,6 +210,10 @@ let analyser = null;
 let audioCtx = null;
 let raf = null;
 let recording = false;
+let wantRecord = false;
+let restartTimer = null;
+let silentEnds = 0;
+let lastResultAt = 0;
 let selectedMicId = null;
 let finalText = '';
 let interimText = '';
@@ -330,7 +334,7 @@ function start() {
     // Показываем анимацию-пульсацию вместо реального уровня RMS.
     startMeter();
 
-    r.onstart = () => { recording = true; setStatus('Слушаю...', 'rec'); diag('onstart'); };
+    r.onstart = () => { recording = true; silentEnds = 0; lastResultAt = Date.now(); setStatus('Слушаю...', 'rec'); diag('onstart'); };
     r.onresult = (e) => {
         interimText = '';
         const added = [];
@@ -343,6 +347,7 @@ function start() {
                 interimText += ' ' + t;
             }
         }
+        lastResultAt = Date.now();
         diag('onresult', 'added=' + added.length, 'interimLen=' + interimText.length, added[0]);
         // Android часто присылает уже записанный фрагмент заново при перезапуске.
         // Дедуплицируем: не добавляем, если начало нового совпадает с хвостом уже записанного.
@@ -357,6 +362,7 @@ function start() {
         diag('onerror', e.error);
         if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
             setStatus('Нет доступа к микрофону', '');
+            wantRecord = false;
             stop();
             return;
         }
@@ -367,14 +373,24 @@ function start() {
         }
     };
     r.onend = () => {
-        diag('onend', 'recording=' + recording);
+        diag('onend', 'want=' + wantRecord, 'recording=' + recording);
         // Google сама обрывает распознавание на тишине/сети — перезапускаем
-        // (необходимо для непрерывной работы, особенно на Android)
-        if (recording) {
-            try { r.start(); } catch (err) { diag('onend-restart-err', String(err)); }
-        }
+        // (необходимо для непрерывной работы, особенно на Android и desktop)
+        if (!wantRecord) return;
+        // Chrome desktop не любит мгновенный старт сразу после onend — ждём 400мс
+        if (restartTimer) clearTimeout(restartTimer);
+        restartTimer = setTimeout(() => {
+            if (!wantRecord || recognizer !== r) return;
+            try {
+                r.start();
+                diag('restarted');
+            } catch (err) {
+                diag('restart-err', String(err));
+            }
+        }, 400);
     };
 
+    wantRecord = true;
     diag('start', 'continuous=' + r.continuous);
     try {
         r.start();
@@ -399,6 +415,8 @@ function escapeHtml(s) {
 
 function stop() {
     recording = false;
+    wantRecord = false;
+    if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
     if (recognizer) {
         try { recognizer.abort(); } catch (e) { /* ignore */ }
         recognizer = null;
