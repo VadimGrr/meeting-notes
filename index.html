@@ -154,6 +154,7 @@ main {
     <button id="diag-btn" class="secondary" title="Показать лог распознавания">🐞</button>
 </header>
 <pre id="diag" hidden></pre>
+<div id="diag-copy" hidden><button id="diag-copy-btn">📋 Скопировать лог</button></div>
 
 <div id="mic-row">
     <label for="mic-select">🎤 Микрофон:</label>
@@ -193,16 +194,31 @@ const micRefresh = document.getElementById('mic-refresh');
 const meterFill = document.getElementById('meter-fill');
 const diagBtn = document.getElementById('diag-btn');
 const diagEl = document.getElementById('diag');
+const diagCopyBtn = document.getElementById('diag-copy-btn');
+const diagCopyWrap = document.getElementById('diag-copy');
 
 function diag(...args) {
     const t = new Date().toISOString().slice(11, 23);
     const line = t + ' ' + args.join(' ');
-    if (diagEl.hidden) diagEl.hidden = false;
     diagEl.textContent += (diagEl.textContent ? '\n' : '') + line;
     diagEl.scrollTop = diagEl.scrollHeight;
     console.debug(line);
 }
-diagBtn.onclick = () => { diagEl.hidden = !diagEl.hidden; };
+diagBtn.onclick = () => {
+    const show = diagEl.hidden;
+    diagEl.hidden = !show;
+    diagCopyWrap.hidden = !show;
+};
+diagCopyBtn.onclick = async () => {
+    try {
+        await navigator.clipboard.writeText(diagEl.textContent);
+        const old = diagCopyBtn.textContent;
+        diagCopyBtn.textContent = '✓ Скопировано';
+        setTimeout(() => { diagCopyBtn.textContent = old; }, 1500);
+    } catch (e) {
+        diagCopyBtn.textContent = 'Не удалось скопировать';
+    }
+};
 
 let recognizer = null;
 let stream = null;
