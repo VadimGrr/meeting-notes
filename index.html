@@ -204,6 +204,19 @@ function diag(...args) {
     diagEl.scrollTop = diagEl.scrollHeight;
     console.debug(line);
 }
+
+function startWarnTimer() {
+    clearWarnTimer();
+    noResultTimer = setTimeout(() => {
+        if (!recording || !wantRecord) return;
+        setStatus('Нет текста — проверьте микрофон/интернет', '');
+        diag('no-results-7s');
+    }, 7000);
+}
+
+function clearWarnTimer() {
+    if (noResultTimer) { clearTimeout(noResultTimer); noResultTimer = null; }
+}
 diagBtn.onclick = () => {
     const show = diagEl.hidden;
     diagEl.hidden = !show;
@@ -230,6 +243,7 @@ let wantRecord = false;
 let restartTimer = null;
 let silentEnds = 0;
 let lastResultAt = 0;
+let noResultTimer = null;
 let selectedMicId = null;
 let finalText = '';
 let interimText = '';
@@ -350,9 +364,10 @@ function start() {
     // Показываем анимацию-пульсацию вместо реального уровня RMS.
     startMeter();
 
-    r.onstart = () => { recording = true; silentEnds = 0; lastResultAt = Date.now(); setStatus('Слушаю...', 'rec'); diag('onstart'); };
+    r.onstart = () => { recording = true; silentEnds = 0; lastResultAt = Date.now(); setStatus('Слушаю...', 'rec'); diag('onstart'); startWarnTimer(); };
     r.onresult = (e) => {
         interimText = '';
+        clearWarnTimer();
         const added = [];
         for (let i = e.resultIndex; i < e.results.length; i++) {
             const res = e.results[i];
@@ -432,6 +447,7 @@ function escapeHtml(s) {
 function stop() {
     recording = false;
     wantRecord = false;
+    clearWarnTimer();
     if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
     if (recognizer) {
         try { recognizer.abort(); } catch (e) { /* ignore */ }
