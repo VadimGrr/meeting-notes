@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Живой конспект встречи</title>
+<title>AI-Конспектирование лекций</title>
 <style>
 :root {
     color-scheme: light;
@@ -149,7 +149,21 @@ main {
 #summary ul { padding-left: 22px; margin: 6px 0; }
 #summary li { margin: 4px 0; }
 #sum-meta { padding: 8px 16px; border-top: var(--border-width) solid var(--border); color: var(--muted); font-size: 13px; }
-#sum-btn { align-self: center; margin: 10px; }
+#sum-controls {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 16px; border-bottom: var(--border-width) solid var(--border);
+}
+#mode-select {
+    background: var(--input-bg); color: var(--text); border: var(--border-width) solid var(--border);
+    padding: 6px 10px; font-size: 13px; flex: 1; min-width: 0; max-width: 260px;
+}
+#sum-btn { margin: 0; }
+#sum-actions {
+    display: flex; gap: 10px; padding: 8px 16px;
+    border-top: var(--border-width) solid var(--border);
+}
+#sum-actions button { flex: 1; }
+#sum-actions #copy-sum-btn { background: var(--input-bg); }
 .empty { color: var(--muted); font-style: italic; }
 
 /* ── Мобильные устройства (Android/телефон) ── */
@@ -168,13 +182,17 @@ main {
     #meter { flex: 1; }
     #transcript, #summary { font-size: 16px; }
     .panel h2 { padding: 10px 12px; }
-    #sum-btn { width: calc(100% - 24px); margin: 10px 12px; min-height: 44px; }
+    #sum-controls { flex-direction: column; align-items: stretch; }
+    #mode-select { max-width: 100%; }
+    #sum-actions { flex-wrap: wrap; }
+    #sum-actions button { min-height: 44px; }
+    #sum-btn { min-height: 44px; }
 }
 </style>
 </head>
 <body>
 <header>
-    <h1>Живой конспект встречи</h1>
+    <h1>AI-Конспектирование лекций</h1>
     <div id="status"><span id="dot"></span><span id="status-text">Готово</span></div>
     <div class="spacer"></div>
     <button id="rec-btn" class="secondary" title="Начать / остановить">▶</button>
@@ -198,13 +216,23 @@ main {
 
 <main>
     <section class="panel">
-        <h2>Живой текст <span class="count" id="word-count">0 слов</span></h2>
-        <div id="transcript"><span class="empty">Нажмите "Начать" и говорите в микрофон...</span></div>
+        <h2>Стенограмма лекции <span class="count" id="word-count">0 слов</span></h2>
+        <div id="transcript"><span class="empty">Включите микрофон во время лекции. Расшифрованный текст появится здесь...</span></div>
     </section>
     <section class="panel">
-        <h2>Конспект AI</h2>
-        <button id="sum-btn">📝 Сгенерировать конспект</button>
-        <div id="summary"><span class="empty">Текст появится после накопления речи и нажатия кнопки.</span></div>
+        <h2>Структурированный конспект</h2>
+        <div id="sum-controls">
+            <select id="mode-select" title="Режим обработки">
+                <option value="lecture">Лекция / Учёба</option>
+                <option value="meeting">Рабочая встреча / Совещание</option>
+            </select>
+            <button id="sum-btn">📝 Сгенерировать</button>
+        </div>
+        <div id="summary"><span class="empty">Здесь появится готовый конспект: ключевые термины, тезисы и домашнее задание.</span></div>
+        <div id="sum-actions" hidden>
+            <button id="copy-sum-btn" class="secondary">📋 Скопировать</button>
+            <button id="dl-sum-btn" class="secondary">⬇ Скачать (.md)</button>
+        </div>
         <div id="sum-meta"></div>
     </section>
 </main>
@@ -229,6 +257,15 @@ const diagCopyWrap = document.getElementById('diag-copy');
 const themeBtn = document.getElementById('theme-btn');
 const micToggle = document.getElementById('mic-toggle');
 const micRow = document.getElementById('mic-row');
+const modeSelect = document.getElementById('mode-select');
+const copySumBtn = document.getElementById('copy-sum-btn');
+const dlSumBtn = document.getElementById('dl-sum-btn');
+const sumActions = document.getElementById('sum-actions');
+
+const SYSTEM_PROMPTS = {
+    lecture: 'Ты — ассистент, который превращает сырую транскрипцию лекции в краткий структурированный конспект на русском для студента. Выдели: ключевые термины и определения, основные тезисы по разделам, примеры, и «Домашнее задание» с пунктами списком, если оно упоминалось. Кратко, без воды.',
+    meeting: 'Ты — ассистент, который превращает сырой текст стенограммы рабочей встречи в краткий структурированный конспект на русском. Выдели: решения, ответственные, сроки, следующие шаги — пунктами списками. Кратко, без воды.'
+};
 
 function diag(...args) {
     const t = new Date().toISOString().slice(11, 23);
@@ -501,13 +538,14 @@ async function makeSummary() {
     if (!text) { sumMeta.textContent = 'Нет текста для конспекта.'; return; }
     if (text.split(/\s+/).length < 25) { sumMeta.textContent = 'Накопите больше текста (минимум ~25 слов).'; return; }
     sumMeta.textContent = 'Генерация конспекта...';
+    const systemPrompt = SYSTEM_PROMPTS[modeSelect.value] || SYSTEM_PROMPTS.lecture;
     const req = () => fetch(GROQ_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             temperature: 0.3,
             messages: [
-                { role: 'system', content: 'Ты — ассистент, который превращает сырой текст живой речи в краткий структурированный конспект на русском. Выдели ключевые темы, решения и пункты списками. Кратко, без воды.' },
+                { role: 'system', content: systemPrompt },
                 { role: 'user', content: text }
             ]
         })
@@ -521,6 +559,8 @@ async function makeSummary() {
             const out = data.choices[0].message.content.trim();
             summaryEl.innerHTML = '';
             summaryEl.innerHTML = renderMarkdown(out);
+            summaryEl.dataset.md = out;
+            if (sumActions.hidden) sumActions.hidden = false;
             sumMeta.textContent = 'Готово';
             return;
         } catch (err) {
@@ -531,19 +571,51 @@ async function makeSummary() {
             }
         }
     }
-    sumMeta.textContent = 'Ошибка конспекта: ' + lastErr.message + ' (сервис Groq перегружен). Повторите через пару минут.';
+    sumMeta.textContent = 'Ошибка конспекта: ' + lastErr.message + ' (сервис перегружен). Повторите через пару минут.';
+}
+
+async function copySummary() {
+    const md = summaryEl.dataset.md || summaryEl.innerText;
+    if (!md) { sumMeta.textContent = 'Сначала сгенерируйте конспект.'; return; }
+    try {
+        await navigator.clipboard.writeText(md);
+        const old = copySumBtn.textContent;
+        copySumBtn.textContent = '✓ Готово';
+        setTimeout(() => { copySumBtn.textContent = old; }, 1500);
+    } catch (e) {
+        sumMeta.textContent = 'Не удалось скопировать: ' + e.message;
+    }
+}
+
+function downloadSummary() {
+    const md = summaryEl.dataset.md || summaryEl.innerText;
+    if (!md) { sumMeta.textContent = 'Сначала сгенерируйте конспект.'; return; }
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'конспект.md';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 recBtn.onclick = () => recording ? stop() : start();
 resetBtn.onclick = () => {
     finalText = '';
     interimText = '';
-    transcriptEl.innerHTML = '<span class="empty">Нажмите "Начать" и говорите в микрофон...</span>';
-    summaryEl.innerHTML = '<span class="empty">Текст появится после накопления речи и нажатия кнопки.</span>';
+    transcriptEl.innerHTML = '<span class="empty">Включите микрофон во время лекции. Расшифрованный текст появится здесь...</span>';
+    summaryEl.innerHTML = '<span class="empty">Здесь появится готовый конспект: ключевые термины, тезисы и домашнее задание.</span>';
+    delete summaryEl.dataset.md;
+    sumActions.hidden = true;
     wordCountEl.textContent = '0 слов';
     sumMeta.textContent = '';
 };
 sumBtn.onclick = makeSummary;
+copySumBtn.onclick = copySummary;
+dlSumBtn.onclick = downloadSummary;
+modeSelect.onchange = () => { try { localStorage.setItem('mode', modeSelect.value); } catch (e) {} };
 micSelect.onchange = () => { selectedMicId = micSelect.value; };
 micRefresh.onclick = loadDevices;
 themeBtn.onclick = () => {
@@ -554,6 +626,8 @@ themeBtn.onclick = () => {
 try {
     if (localStorage.getItem('theme') === 'dark') document.body.classList.add('dark');
     themeBtn.textContent = document.body.classList.contains('dark') ? '☀' : '☾';
+    const savedMode = localStorage.getItem('mode');
+    if (savedMode && SYSTEM_PROMPTS[savedMode]) modeSelect.value = savedMode;
 } catch (e) {}
 micToggle.onclick = () => {
     const hidden = micRow.style.display === 'none';
