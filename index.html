@@ -6,13 +6,32 @@
 <title>Живой конспект встречи</title>
 <style>
 :root {
+    color-scheme: light;
+    --bg: #ffffff;
+    --panel: #ffffff;
+    --panel-sub: #efefef;
+    --border: #000000;
+    --border-width: 4px;
+    --radius: 0;
+    --accent: #000000;
+    --text: #111111;
+    --muted: #555555;
+    --arrow: #3a3a3a;
+    --meter-track: #e8e8e8;
+    --input-bg: #ffffff;
+    --muted-bg: #ececec;
+    --dot-idle: #cccccc;
+}
+body.dark {
     color-scheme: dark;
+    background: #0f1117;
+    color: #e6e8ee;
     --bg: #0f1117;
     --panel: #1a1d27;
     --panel-sub: #14161e;
     --border: #4a5670;
     --border-width: 3px;
-    --radius: 14px;
+    --radius: 0;
     --accent: #4f8cff;
     --text: #e6e8ee;
     --muted: #8b90a0;
@@ -22,26 +41,7 @@
     --muted-bg: #2a2f3d;
     --dot-idle: #3a3f4e;
 }
-body.light {
-    color-scheme: light;
-    background: #f2f2f4;
-    color: #111111;
-    --bg: #f2f2f4;
-    --panel: #ffffff;
-    --panel-sub: #eaeaea;
-    --border: #000000;
-    --border-width: 3px;
-    --accent: #111111;
-    --text: #111111;
-    --muted: #5b5b5b;
-    --arrow: #3a3a3a;
-    --meter-track: #e6e6e8;
-    --input-bg: #ffffff;
-    --muted-bg: #e6e6e8;
-    --dot-idle: #c9c9cd;
-}
-body.light #transcript, body.light #summary, body.light #diag, body.light #status-text { color: #111111; }
-body.light .panel h2 { color: #444444; }
+body.dark #transcript, body.dark #summary, body.dark #diag, body.dark #status-text { color: #e6e8ee; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
     font-family: "Segoe UI", -apple-system, sans-serif;
@@ -75,7 +75,7 @@ header h1 { font-size: 18px; font-weight: 600; }
 .spacer { flex: 1; }
 button {
     background: var(--accent); color: white; border: none;
-    padding: 8px 18px; border-radius: 8px; font-size: 14px;
+    padding: 8px 18px; font-size: 14px;
     cursor: pointer; transition: filter 0.15s;
 }
 button:hover { filter: brightness(1.1); }
@@ -91,7 +91,7 @@ button.secondary {
 #mic-row label { font-size: 13px; color: var(--muted); }
 #mic-select {
     background: var(--input-bg); color: var(--text); border: var(--border-width) solid var(--border);
-    padding: 6px 10px; border-radius: 8px; font-size: 13px; max-width: 220px;
+    padding: 6px 10px; font-size: 13px; max-width: 220px;
 }
 #mic-refresh {
     background: var(--input-bg); border: var(--border-width) solid var(--border);
@@ -103,7 +103,7 @@ button.secondary {
 #meter-label { font-size: 11px; color: var(--muted); }
 #meter {
     width: 160px; height: 12px; background: var(--meter-track);
-    border-radius: 6px; border: var(--border-width) solid var(--border); overflow: hidden;
+    border: var(--border-width) solid var(--border); overflow: hidden;
 }
 #meter-fill {
     height: 100%; width: 0%; background: linear-gradient(90deg,#2ecc71,#f1c40f,#e74c3c);
@@ -134,7 +134,7 @@ main {
     padding: 12px 16px; border-bottom: var(--border-width) solid var(--border);
 }
 .panel h2 .count {
-    margin-left: auto; background: var(--muted-bg); border-radius: 6px;
+    margin-left: auto; background: var(--muted-bg);
     padding: 2px 8px; font-size: 12px;
 }
 #transcript, #summary {
@@ -177,10 +177,11 @@ main {
     <h1>Живой конспект встречи</h1>
     <div id="status"><span id="dot"></span><span id="status-text">Готово</span></div>
     <div class="spacer"></div>
-    <button id="rec-btn" class="secondary">▶ Начать</button>
+    <button id="rec-btn" class="secondary" title="Начать / остановить">▶</button>
     <button id="reset-btn" class="secondary">Сброс</button>
     <button id="diag-btn" class="secondary" title="Показать лог распознавания">🐞</button>
-    <button id="theme-btn" class="secondary" title="Сменить тему">🌗</button>
+    <button id="theme-btn" class="secondary" title="Сменить тему">☾</button>
+    <button id="mic-toggle" class="secondary" title="Показать / скрыть панель микрофона">▾</button>
 </header>
 <pre id="diag" hidden></pre>
 <div id="diag-copy" hidden><button id="diag-copy-btn">📋 Скопировать лог</button></div>
@@ -188,7 +189,7 @@ main {
 <div id="mic-row">
     <label for="mic-select">🎤 Микрофон:</label>
     <select id="mic-select"></select>
-    <button id="mic-refresh">🔄 Обновить</button>
+    <button id="mic-refresh" title="Обновить микрофоны">⟳</button>
     <div id="meter-wrap">
         <span id="meter-label">Уровень</span>
         <div id="meter"><div id="meter-fill"></div></div>
@@ -226,6 +227,8 @@ const diagEl = document.getElementById('diag');
 const diagCopyBtn = document.getElementById('diag-copy-btn');
 const diagCopyWrap = document.getElementById('diag-copy');
 const themeBtn = document.getElementById('theme-btn');
+const micToggle = document.getElementById('mic-toggle');
+const micRow = document.getElementById('mic-row');
 
 function diag(...args) {
     const t = new Date().toISOString().slice(11, 23);
@@ -394,7 +397,7 @@ function start() {
     // Показываем анимацию-пульсацию вместо реального уровня RMS.
     startMeter();
 
-    r.onstart = () => { recording = true; silentEnds = 0; lastResultAt = Date.now(); setStatus('Слушаю...', 'rec'); diag('onstart'); startWarnTimer(); };
+    r.onstart = () => { recording = true; silentEnds = 0; lastResultAt = Date.now(); setStatus('Слушаю...', 'rec'); recBtn.textContent = '■'; recBtn.classList.remove('secondary'); diag('onstart'); startWarnTimer(); };
     r.onresult = (e) => {
         interimText = '';
         clearWarnTimer();
@@ -485,7 +488,7 @@ function stop() {
     }
     if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
     stopMeter();
-    recBtn.textContent = '▶ Начать';
+    recBtn.textContent = '▶';
     recBtn.classList.add('secondary');
     micSelect.disabled = false;
     micRefresh.disabled = false;
@@ -544,10 +547,21 @@ sumBtn.onclick = makeSummary;
 micSelect.onchange = () => { selectedMicId = micSelect.value; };
 micRefresh.onclick = loadDevices;
 themeBtn.onclick = () => {
-    const light = document.body.classList.toggle('light');
-    try { localStorage.setItem('theme', light ? 'light' : 'dark'); } catch (e) {}
+    const dark = document.body.classList.toggle('dark');
+    themeBtn.textContent = dark ? '☀' : '☾';
+    try { localStorage.setItem('theme', dark ? 'dark' : 'light'); } catch (e) {}
 };
-try { if (localStorage.getItem('theme') === 'light') document.body.classList.add('light'); } catch (e) {}
+try {
+    if (localStorage.getItem('theme') === 'dark') document.body.classList.add('dark');
+    themeBtn.textContent = document.body.classList.contains('dark') ? '☀' : '☾';
+} catch (e) {}
+micToggle.onclick = () => {
+    const hidden = micRow.style.display === 'none';
+    micRow.style.display = hidden ? 'flex' : 'none';
+    micToggle.textContent = hidden ? '▾' : '▴';
+    try { localStorage.setItem('micHidden', hidden ? '' : '1'); } catch (e) {}
+};
+try { if (localStorage.getItem('micHidden') === '1') { micRow.style.display = 'none'; micToggle.textContent = '▴'; } } catch (e) {}
 
 // ── Разрешение на микрофон (чтобы enumerateDevices вернул метки) ──
 navigator.mediaDevices && navigator.mediaDevices.getUserMedia({ audio: true })
