@@ -8,11 +8,33 @@
 :root {
     --bg: #0f1117;
     --panel: #1a1d27;
-    --border: #2a2f3d;
+    --panel-sub: #14161e;
+    --border: #3a4357;
+    --border-width: 2px;
+    --radius: 14px;
     --accent: #4f8cff;
     --text: #e6e8ee;
     --muted: #8b90a0;
     --arrow: #4f5a6b;
+    --meter-track: #0a0c12;
+    --input-bg: #1a1d27;
+    --muted-bg: #2a2f3d;
+    --dot-idle: #3a3f4e;
+}
+body.light {
+    --bg: #f2f2f4;
+    --panel: #ffffff;
+    --panel-sub: #eaeaea;
+    --border: #000000;
+    --border-width: 3px;
+    --accent: #111111;
+    --text: #191919;
+    --muted: #5b5b5b;
+    --arrow: #3a3a3a;
+    --meter-track: #e6e6e8;
+    --input-bg: #ffffff;
+    --muted-bg: #e6e6e8;
+    --dot-idle: #c9c9cd;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -30,7 +52,7 @@ header {
     gap: 16px;
     padding: 14px 24px;
     background: var(--panel);
-    border-bottom: 1px solid var(--border);
+    border-bottom: var(--border-width) solid var(--border);
 }
 header h1 { font-size: 18px; font-weight: 600; }
 #status {
@@ -39,7 +61,7 @@ header h1 { font-size: 18px; font-weight: 600; }
 }
 #dot {
     width: 10px; height: 10px; border-radius: 50%;
-    background: #3a3f4e; display: inline-block;
+    background: var(--dot-idle); display: inline-block;
 }
 #dot.on { background: #f0a500; box-shadow: 0 0 8px #f0a500; animation: pulse 1s infinite; }
 #dot.rec { background: #e5484d; box-shadow: 0 0 8px #e5484d; animation: pulse 0.6s infinite; }
@@ -52,21 +74,21 @@ button {
 }
 button:hover { filter: brightness(1.1); }
 button.secondary {
-    background: #2a2f3d; color: var(--text);
-    border: 1px solid var(--border);
+    background: var(--muted-bg); color: var(--text);
+    border: var(--border-width) solid var(--border);
 }
 #mic-row {
     display: flex; align-items: center; gap: 12px;
-    padding: 10px 24px; background: #14161e;
-    border-bottom: 1px solid var(--border);
+    padding: 10px 24px; background: var(--panel-sub);
+    border-bottom: var(--border-width) solid var(--border);
 }
 #mic-row label { font-size: 13px; color: var(--muted); }
 #mic-select {
-    background: #1a1d27; color: var(--text); border: 1px solid var(--border);
+    background: var(--input-bg); color: var(--text); border: var(--border-width) solid var(--border);
     padding: 6px 10px; border-radius: 8px; font-size: 13px; max-width: 220px;
 }
 #mic-refresh {
-    background: #1a1d27; border: 1px solid var(--border);
+    background: var(--input-bg); border: var(--border-width) solid var(--border);
     padding: 6px 12px;
 }
 #meter-wrap {
@@ -74,8 +96,8 @@ button.secondary {
 }
 #meter-label { font-size: 11px; color: var(--muted); }
 #meter {
-    width: 160px; height: 12px; background: #0a0c12;
-    border-radius: 6px; border: 1px solid #333a4a; overflow: hidden;
+    width: 160px; height: 12px; background: var(--meter-track);
+    border-radius: 6px; border: var(--border-width) solid var(--border); overflow: hidden;
 }
 #meter-fill {
     height: 100%; width: 0%; background: linear-gradient(90deg,#2ecc71,#f1c40f,#e74c3c);
@@ -92,8 +114,8 @@ main {
 }
 .panel {
     background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    border: var(--border-width) solid var(--border);
+    border-radius: var(--radius);
     display: flex;
     flex-direction: column;
     min-height: 0;
@@ -103,10 +125,10 @@ main {
     display: flex; align-items: center;
     font-size: 13px; text-transform: uppercase; letter-spacing: 1px;
     color: var(--muted); font-weight: 600;
-    padding: 12px 16px; border-bottom: 1px solid var(--border);
+    padding: 12px 16px; border-bottom: var(--border-width) solid var(--border);
 }
 .panel h2 .count {
-    margin-left: auto; background: var(--border); border-radius: 6px;
+    margin-left: auto; background: var(--muted-bg); border-radius: 6px;
     padding: 2px 8px; font-size: 12px;
 }
 #transcript, #summary {
@@ -120,7 +142,7 @@ main {
 #summary h3 { color: var(--accent); margin: 14px 0 6px; font-size: 15px; }
 #summary ul { padding-left: 22px; margin: 6px 0; }
 #summary li { margin: 4px 0; }
-#sum-meta { padding: 8px 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px; }
+#sum-meta { padding: 8px 16px; border-top: var(--border-width) solid var(--border); color: var(--muted); font-size: 13px; }
 #sum-btn { align-self: center; margin: 10px; }
 .empty { color: var(--muted); font-style: italic; }
 
@@ -152,6 +174,7 @@ main {
     <button id="rec-btn" class="secondary">▶ Начать</button>
     <button id="reset-btn" class="secondary">Сброс</button>
     <button id="diag-btn" class="secondary" title="Показать лог распознавания">🐞</button>
+    <button id="theme-btn" class="secondary" title="Сменить тему">🌗</button>
 </header>
 <pre id="diag" hidden></pre>
 <div id="diag-copy" hidden><button id="diag-copy-btn">📋 Скопировать лог</button></div>
@@ -196,6 +219,7 @@ const diagBtn = document.getElementById('diag-btn');
 const diagEl = document.getElementById('diag');
 const diagCopyBtn = document.getElementById('diag-copy-btn');
 const diagCopyWrap = document.getElementById('diag-copy');
+const themeBtn = document.getElementById('theme-btn');
 
 function diag(...args) {
     const t = new Date().toISOString().slice(11, 23);
@@ -506,6 +530,11 @@ resetBtn.onclick = () => {
 sumBtn.onclick = makeSummary;
 micSelect.onchange = () => { selectedMicId = micSelect.value; };
 micRefresh.onclick = loadDevices;
+themeBtn.onclick = () => {
+    const light = document.body.classList.toggle('light');
+    try { localStorage.setItem('theme', light ? 'light' : 'dark'); } catch (e) {}
+};
+try { if (localStorage.getItem('theme') === 'light') document.body.classList.add('light'); } catch (e) {}
 
 // ── Разрешение на микрофон (чтобы enumerateDevices вернул метки) ──
 navigator.mediaDevices && navigator.mediaDevices.getUserMedia({ audio: true })
