@@ -498,30 +498,37 @@ async function makeSummary() {
     if (!text) { sumMeta.textContent = 'Нет текста для конспекта.'; return; }
     if (text.split(/\s+/).length < 25) { sumMeta.textContent = 'Накопите больше текста (минимум ~25 слов).'; return; }
     sumMeta.textContent = 'Генерация конспекта...';
-    try {
-        const resp = await fetch(GROQ_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                temperature: 0.3,
-                messages: [
-                    { role: 'system', content: 'Ты — ассистент, который превращает сырой текст живой речи в краткий структурированный конспект на русском. Выдели ключевые темы, решения и пункты списками. Кратко, без воды.' },
-                    { role: 'user', content: text }
-                ]
-            })
-        });
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error?.message || 'HTTP ' + resp.status);
-        const out = data.choices[0].message.content.trim();
-        summaryEl.innerHTML = '';
-        summaryEl.innerHTML = renderMarkdown(out);
-        sumMeta.textContent = 'Готово';
-    } catch (err) {
-        console.error(err);
-        sumMeta.textContent = 'Ошибка конспекта: ' + err.message;
+    const req = () => fetch(GROQ_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            temperature: 0.3,
+            messages: [
+                { role: 'system', content: 'Ты — ассистент, который превращает сырой текст живой речи в краткий структурированный конспект на русском. Выдели ключевые темы, решения и пункты списками. Кратко, без воды.' },
+                { role: 'user', content: text }
+            ]
+        })
+    });
+    let lastErr = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            const resp = await req();
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error?.message || 'HTTP ' + resp.status);
+            const out = data.choices[0].message.content.trim();
+            summaryEl.innerHTML = '';
+            summaryEl.innerHTML = renderMarkdown(out);
+            sumMeta.textContent = 'Готово';
+            return;
+        } catch (err) {
+            lastErr = err;
+            if (attempt < 3) {
+                sumMeta.textContent = 'Повтор ' + attempt + '/3...';
+                await new Promise(r => setTimeout(r, 2500 * attempt));
+            }
+        }
     }
+    sumMeta.textContent = 'Ошибка конспекта: ' + lastErr.message + ' (сервис Groq перегружен). Повторите через пару минут.';
 }
 
 recBtn.onclick = () => recording ? stop() : start();
