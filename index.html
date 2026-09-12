@@ -6,11 +6,12 @@
 <title>Живой конспект встречи</title>
 <style>
 :root {
+    color-scheme: dark;
     --bg: #0f1117;
     --panel: #1a1d27;
     --panel-sub: #14161e;
-    --border: #3a4357;
-    --border-width: 2px;
+    --border: #4a5670;
+    --border-width: 3px;
     --radius: 14px;
     --accent: #4f8cff;
     --text: #e6e8ee;
@@ -22,13 +23,16 @@
     --dot-idle: #3a3f4e;
 }
 body.light {
+    color-scheme: light;
+    background: #f2f2f4;
+    color: #111111;
     --bg: #f2f2f4;
     --panel: #ffffff;
     --panel-sub: #eaeaea;
     --border: #000000;
     --border-width: 3px;
     --accent: #111111;
-    --text: #191919;
+    --text: #111111;
     --muted: #5b5b5b;
     --arrow: #3a3a3a;
     --meter-track: #e6e6e8;
@@ -36,6 +40,8 @@ body.light {
     --muted-bg: #e6e6e8;
     --dot-idle: #c9c9cd;
 }
+body.light #transcript, body.light #summary, body.light #diag, body.light #status-text { color: #111111; }
+body.light .panel h2 { color: #444444; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
     font-family: "Segoe UI", -apple-system, sans-serif;
