@@ -246,7 +246,8 @@ body.light ::-webkit-scrollbar-thumb { background: rgba(35, 32, 56, 0.25); borde
 
 #tr-controls {
     display: flex; gap: 8px; padding: 10px 14px; flex-wrap: wrap;
-    border-bottom: 1px solid var(--glass-border);
+    margin-top: auto;
+    border-top: 1px solid var(--glass-border);
 }
 #tr-controls button { padding: 6px 12px; font-size: 12.5px; box-shadow: none; border-radius: 8px; }
 #tr-live {
@@ -263,7 +264,7 @@ body.light #tr-live { background: rgba(35, 32, 56, 0.03); }
 #transcript:focus { box-shadow: inset 0 0 0 1px rgba(255, 107, 107, 0.35); }
 #file-row {
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-    margin: 12px 20px 0;
+    margin: 0 20px 16px;
     padding: 10px 16px;
     background: var(--glass);
     backdrop-filter: blur(14px);
@@ -305,7 +306,7 @@ body.light #tr-live { background: rgba(35, 32, 56, 0.03); }
     #sum-btn { min-height: 44px; }
     #tr-controls { padding: 8px 10px; }
     #tr-live { max-height: 80px; padding: 8px 12px; }
-    #file-row { margin: 10px 12px 0; }
+    #file-row { margin: 0 12px 12px; }
     #file-input { max-width: 100%; flex: 1 1 100%; }
 }
 </style>
@@ -334,27 +335,17 @@ body.light #tr-live { background: rgba(35, 32, 56, 0.03); }
     </div>
 </div>
 
-<div id="file-row">
-    <label for="file-input">🎧 Аудиофайл:</label>
-    <input type="file" id="file-input" accept="audio/*,.mp3,.wav,.ogg,.m4a,.webm,.flac">
-    <audio id="audio-el" controls hidden></audio>
-    <button id="file-play-btn" class="secondary" title="Играть / пауза">▶</button>
-    <button id="file-live-btn" class="secondary" title="Прокрутить файл через колонки — микрофон распознаёт живой текст">🎧 Живой текст</button>
-    <button id="file-whisper-btn" class="secondary" title="Точная расшифровка через Faster-Whisper">⚡ Whisper</button>
-    <span id="file-status"></span>
-</div>
-
 <main>
     <section class="panel">
         <h2>Стенограмма лекции <span class="count" id="word-count">0 слов</span></h2>
+        <div id="tr-live"><span class="empty">Говорите — распознавание в реальном времени...</span></div>
+        <div id="transcript" contenteditable="true" spellcheck="false"><span class="empty">Сюда перемещается распознанный текст: можно редактировать и прокручивать.</span></div>
         <div id="tr-controls">
             <button id="tr-clear-btn" class="secondary">🗑 Очистить</button>
             <button id="tr-copy-btn" class="secondary">📋 Копировать</button>
             <button id="tr-dl-txt-btn" class="secondary">⬇ .txt</button>
             <button id="tr-dl-md-btn" class="secondary">⬇ .md</button>
         </div>
-        <div id="tr-live"><span class="empty">Говорите — распознавание в реальном времени...</span></div>
-        <div id="transcript" contenteditable="true" spellcheck="false"><span class="empty">Сюда перемещается распознанный текст: можно редактировать и прокручивать.</span></div>
     </section>
     <section class="panel">
         <h2>Структурированный конспект</h2>
@@ -373,6 +364,16 @@ body.light #tr-live { background: rgba(35, 32, 56, 0.03); }
         <div id="sum-meta"></div>
     </section>
 </main>
+
+<div id="file-row">
+    <label for="file-input">🎧 Аудиофайл:</label>
+    <input type="file" id="file-input" accept="audio/*,.mp3,.wav,.ogg,.m4a,.webm,.flac">
+    <audio id="audio-el" controls hidden></audio>
+    <button id="file-play-btn" class="secondary" title="Играть / пауза">▶</button>
+    <button id="file-live-btn" class="secondary" title="Прокрутить файл через колонки — микрофон распознаёт живой текст">🎧 Живой текст</button>
+    <button id="file-whisper-btn" class="secondary" title="Точная расшифровка через Faster-Whisper">⚡ Whisper</button>
+    <span id="file-status"></span>
+</div>
 
 <script>
 const transcriptEl = document.getElementById('transcript');
