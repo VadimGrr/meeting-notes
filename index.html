@@ -354,6 +354,11 @@ body.light #tr-live { background: rgba(35, 32, 56, 0.03); }
                 <option value="lecture">Лекция / Учёба</option>
                 <option value="meeting">Рабочая встреча / Совещание</option>
             </select>
+            <select id="provider-select" title="Генератор конспекта">
+                <option value="local">Локально (в браузере)</option>
+                <option value="yandex">Яндекс GPT</option>
+                <option value="gigachat">Сбер GigaChat</option>
+            </select>
             <button id="sum-btn">📝 Сгенерировать</button>
         </div>
         <div id="summary"><span class="empty">Здесь появится готовый конспект: ключевые термины, тезисы и домашнее задание.</span></div>
@@ -396,6 +401,7 @@ const themeBtn = document.getElementById('theme-btn');
 const micToggle = document.getElementById('mic-toggle');
 const micRow = document.getElementById('mic-row');
 const modeSelect = document.getElementById('mode-select');
+const providerSelect = document.getElementById('provider-select');
 const copySumBtn = document.getElementById('copy-sum-btn');
 const dlSumBtn = document.getElementById('dl-sum-btn');
 const sumActions = document.getElementById('sum-actions');
@@ -477,8 +483,9 @@ let fileLive = false;
 const STORE_KEY = 'mn_transcript_v1';
 
 const GROQ_URL = 'https://meeting-notes.vadi714g.workers.dev/';
-const SUMMARY_URL = 'https://mean-turkeys-warn.loca.lt/';
+const SUMMARY_URL = 'https://real-toes-jam.loca.lt/';
 const WHISPER_URL = SUMMARY_URL + 'api/transcribe';
+const YANDEX_URL = SUMMARY_URL + 'api/yandex';
 
 function setStatus(text, state) {
     statusEl.textContent = text;
@@ -703,13 +710,101 @@ function stop() {
     setStatus('Готово', 'on');
 }
 
+// ── Локальная модель в браузере (transformers.js) ──
+let localGen = null;
+let localModelStatus = 'idle';
+
+async function loadLocalModel(progress) {
+    if (localGen) return localGen;
+    if (localModelStatus === 'loading') throw new Error('модель уже загружается');
+    localModelStatus = 'loading';
+    try {
+        const { pipeline, env } = await import('https://esm.sh/@huggingface/transformers@4.3.0');
+        env.allowLocalModels = false;
+        env.useBrowserCache = true;
+        const cfg = {
+            dtype: 'int8',
+            device: 'wasm',
+        };
+        let useWebGPU = false;
+        if (navigator.gpu) {
+            try {
+                const gpu = await navigator.gpu.requestAdapter();
+                useWebGPU = !!gpu;
+            } catch (e) { /* ignore */ }
+        }
+        if (useWebGPU) Object.assign(cfg, { device: 'webgpu', dtype: 'fp16' });
+        const p0 = JSON.parse(JSON.stringify(progress));
+        localGen = await pipeline('text-generation', 'onnx-community/Qwen2.5-0.5B-Instruct', {
+            ...cfg,
+            progress_callback: (p) => {
+                if (p && typeof p.total === 'number') {
+                    progress({ loaded: p.loaded, total: p.total });
+                }
+            }
+        });
+        if (!p0.cancelled && useWebGPU && false) { /* placeholder */ }
+        localModelStatus = 'ready';
+        return localGen;
+    } catch (e) {
+        localModelStatus = 'error';
+        throw e;
+    }
+}
+
+async function summarizeLocal(text, systemPrompt, onProgress) {
+    const gen = await loadLocalModel(onProgress);
+    onProgress({ loading: false, msg: 'Генерация конспекта (локально)...' });
+    const out = await gen(
+        [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: text }
+        ],
+        { max_new_tokens: 900, do_sample: false }
+    );
+    let raw = out;
+    if (Array.isArray(out) && out[0]) raw = out[0].generated_text;
+    if (Array.isArray(raw)) {
+        for (let i = raw.length - 1; i >= 0; i--) {
+            if (raw[i].role === 'assistant' && typeof raw[i].content === 'string') return raw[i].content.trim();
+        }
+        return '';
+    }
+    return typeof raw === 'string' ? raw.trim() : '';
+}
+
 async function makeSummary() {
     const text = finalText.trim();
     if (!text) { sumMeta.textContent = 'Нет текста для конспекта.'; return; }
     if (text.split(/\s+/).length < 25) { sumMeta.textContent = 'Накопите больше текста (минимум ~25 слов).'; return; }
-    sumMeta.textContent = 'Генерация конспекта...';
     const systemPrompt = SYSTEM_PROMPTS[modeSelect.value] || SYSTEM_PROMPTS.lecture;
-    const req = () => fetch(SUMMARY_URL, {
+    const provider = providerSelect.value;
+
+    if (provider === 'local') {
+        try {
+            sumMeta.textContent = 'Загрузка локальной модели (первый раз ~1-2 минуты)...';
+            const out = await summarizeLocal(text, systemPrompt, (p) => {
+                if (p && p.loading === false) { sumMeta.textContent = p.msg || 'Генерация...'; return; }
+                if (p && typeof p.total === 'number') {
+                    sumMeta.textContent = 'Загрузка модели... ' + Math.round(p.loaded / p.total * 100) + '%';
+                }
+            });
+            if (!out) throw new Error('пустой ответ модели');
+            summaryEl.innerHTML = '';
+            summaryEl.innerHTML = renderMarkdown(out);
+            summaryEl.dataset.md = out;
+            if (sumActions.hidden) sumActions.hidden = false;
+            sumMeta.textContent = 'Готово (локально)';
+            return;
+        } catch (e) {
+            sumMeta.textContent = 'Ошибка локальной модели: ' + e.message + '. Выберите другой генератор.';
+            return;
+        }
+    }
+
+    const endpoint = provider === 'gigachat' ? SUMMARY_URL : YANDEX_URL;
+    sumMeta.textContent = 'Генерация конспекта...';
+    const req = () => fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'bypass-tunnel-reminder': 'true' },
         body: JSON.stringify({
@@ -724,7 +819,6 @@ async function makeSummary() {
     for (let attempt = 1; attempt <= 3; attempt++) {
         try {
             const resp = await req();
-            const ct = resp.headers.get('content-type') || '';
             const respText = await resp.text();
             let data = null;
             try { data = JSON.parse(respText); } catch (e) { data = null; }
@@ -732,7 +826,7 @@ async function makeSummary() {
                 const msg = resp.status === 511
                     ? 'туннель требует подтверждения: откройте ' + SUMMARY_URL.replace(/\/$/, '') + ' в браузере и нажмите Continue, затем повторите'
                     : resp.status === 502 || resp.status === 503
-                    ? 'сервер/туннель временно перегружен (' + resp.status + ')'
+                    ? 'генератор/туннель временно перегружен (' + resp.status + ')'
                     : (data && data.error?.message) ? data.error.message : 'HTTP ' + resp.status;
                 throw new Error(msg);
             }
@@ -958,6 +1052,7 @@ sumBtn.onclick = makeSummary;
 copySumBtn.onclick = copySummary;
 dlSumBtn.onclick = downloadSummary;
 modeSelect.onchange = () => { try { localStorage.setItem('mode', modeSelect.value); } catch (e) {} };
+providerSelect.onchange = () => { try { localStorage.setItem('provider', providerSelect.value); } catch (e) {} };
 micSelect.onchange = () => { selectedMicId = micSelect.value; };
 micRefresh.onclick = loadDevices;
 themeBtn.onclick = () => {
@@ -970,6 +1065,8 @@ try {
     themeBtn.textContent = document.body.classList.contains('light') ? '☾' : '☀';
     const savedMode = localStorage.getItem('mode');
     if (savedMode && SYSTEM_PROMPTS[savedMode]) modeSelect.value = savedMode;
+    const savedProvider = localStorage.getItem('provider');
+    if (savedProvider && ['local', 'yandex', 'gigachat'].includes(savedProvider)) providerSelect.value = savedProvider;
 } catch (e) {}
 micToggle.onclick = () => {
     const hidden = micRow.style.display === 'none';
