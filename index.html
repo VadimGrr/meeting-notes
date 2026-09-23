@@ -477,7 +477,7 @@ let fileLive = false;
 const STORE_KEY = 'mn_transcript_v1';
 
 const GROQ_URL = 'https://meeting-notes.vadi714g.workers.dev/';
-const SUMMARY_URL = 'https://silly-cobras-give.loca.lt/';
+const SUMMARY_URL = 'https://mean-turkeys-warn.loca.lt/';
 const WHISPER_URL = SUMMARY_URL + 'api/transcribe';
 
 function setStatus(text, state) {
@@ -711,7 +711,7 @@ async function makeSummary() {
     const systemPrompt = SYSTEM_PROMPTS[modeSelect.value] || SYSTEM_PROMPTS.lecture;
     const req = () => fetch(SUMMARY_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'bypass-tunnel-reminder': 'true' },
         body: JSON.stringify({
             temperature: 0.3,
             messages: [
@@ -729,8 +729,10 @@ async function makeSummary() {
             let data = null;
             try { data = JSON.parse(respText); } catch (e) { data = null; }
             if (!resp.ok) {
-                const msg = resp.status === 502 || resp.status === 503
-                    ? 'сервер/туннель временно перегружен (' + resp.status + ' - большие файлы или трафик)'
+                const msg = resp.status === 511
+                    ? 'туннель требует подтверждения: откройте ' + SUMMARY_URL.replace(/\/$/, '') + ' в браузере и нажмите Continue, затем повторите'
+                    : resp.status === 502 || resp.status === 503
+                    ? 'сервер/туннель временно перегружен (' + resp.status + ')'
                     : (data && data.error?.message) ? data.error.message : 'HTTP ' + resp.status;
                 throw new Error(msg);
             }
@@ -916,14 +918,14 @@ fileWhisperBtn.onclick = async () => {
     try {
         const resp = await fetch(WHISPER_URL, {
             method: 'POST',
-            headers: { 'Content-Type': f.type || 'application/octet-stream' },
+            headers: { 'Content-Type': f.type || 'application/octet-stream', 'bypass-tunnel-reminder': 'true' },
             body: f
         });
         const ct = resp.headers.get('content-type') || '';
         const respText = await resp.text();
         let j = null;
         try { j = JSON.parse(respText); } catch (e2) { j = null; }
-        if (!resp.ok) throw new Error(resp.status === 502 || resp.status === 503 ? 'туннель перегружен (' + resp.status + ')' : 'HTTP ' + resp.status);
+        if (!resp.ok) throw new Error(resp.status === 511 ? 'туннель требует подтверждения в браузере (511) — откройте URL туннеля и нажмите Continue' : (resp.status === 502 || resp.status === 503 ? 'туннель перегружен (' + resp.status + ')' : 'HTTP ' + resp.status));
         if (!j) throw new Error('некорректный ответ сервера');
         const txt = (j.text || '').trim();
         if (!txt) { fileStatus.textContent = 'Речь не распознана (пустой результат)'; return; }
