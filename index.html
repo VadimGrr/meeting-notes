@@ -483,7 +483,7 @@ let fileLive = false;
 const STORE_KEY = 'mn_transcript_v1';
 
 const GROQ_URL = 'https://meeting-notes.vadi714g.workers.dev/';
-const SUMMARY_URL = 'https://real-toes-jam.loca.lt/';
+const SUMMARY_URL = 'https://tidy-baboons-begin.loca.lt/';
 const WHISPER_URL = SUMMARY_URL + 'api/transcribe';
 const YANDEX_URL = SUMMARY_URL + 'api/yandex';
 
@@ -718,36 +718,50 @@ async function loadLocalModel(progress) {
     if (localGen) return localGen;
     if (localModelStatus === 'loading') throw new Error('модель уже загружается');
     localModelStatus = 'loading';
+    const MODEL_ID = 'onnx-community/Qwen2.5-0.5B-Instruct';
+    let device = 'cpu';
+    let dtype = 'int8';
     try {
         const { pipeline, env } = await import('https://esm.sh/@huggingface/transformers@4.3.0');
         env.allowLocalModels = false;
         env.useBrowserCache = true;
-        const cfg = {
-            dtype: 'int8',
-            device: 'wasm',
-        };
         let useWebGPU = false;
-        if (navigator.gpu) {
+        if (typeof navigator !== 'undefined' && navigator.gpu) {
             try {
-                const gpu = await navigator.gpu.requestAdapter();
-                useWebGPU = !!gpu;
-            } catch (e) { /* ignore */ }
+                const adapter = await navigator.gpu.requestAdapter();
+                useWebGPU = !!adapter;
+            } catch (e) { useWebGPU = false; }
         }
-        if (useWebGPU) Object.assign(cfg, { device: 'webgpu', dtype: 'fp16' });
-        const p0 = JSON.parse(JSON.stringify(progress));
-        localGen = await pipeline('text-generation', 'onnx-community/Qwen2.5-0.5B-Instruct', {
-            ...cfg,
+        if (useWebGPU) { device = 'webgpu'; dtype = 'fp16'; }
+        const doLoad = async () => await pipeline('text-generation', MODEL_ID, {
+            device, dtype,
             progress_callback: (p) => {
-                if (p && typeof p.total === 'number') {
-                    progress({ loaded: p.loaded, total: p.total });
-                }
+                if (p && typeof p.total === 'number') progress({ loaded: p.loaded, total: p.total });
             }
         });
-        if (!p0.cancelled && useWebGPU && false) { /* placeholder */ }
+        try {
+            localGen = await doLoad();
+        } catch (e) {
+            console.warn('webgpu-загрузка не удалась, переключаюсь на cpu:', e);
+            if (device === 'webgpu') {
+                device = 'cpu'; dtype = 'int8';
+                localGen = await pipeline('text-generation', MODEL_ID, {
+                    device, dtype,
+                    progress_callback: (p) => {
+                        if (p && typeof p.total === 'number') progress({ loaded: p.loaded, total: p.total });
+                    }
+                });
+            } else {
+                throw e;
+            }
+        }
         localModelStatus = 'ready';
         return localGen;
     } catch (e) {
         localModelStatus = 'error';
+        const m = String(e && e.message ? e.message : e);
+        if (m.includes('Failed to fetch') || m.includes('dynamically imported')) throw new Error('не удалось загрузить модуль модели (проверьте сеть)');
+        if (m.includes('not valid JSON') || m.includes('404') || m.includes('403')) throw new Error('модель не загрузилась с сервера (' + m.slice(0, 120) + ')');
         throw e;
     }
 }
@@ -760,7 +774,7 @@ async function summarizeLocal(text, systemPrompt, onProgress) {
             { role: 'system', content: systemPrompt },
             { role: 'user', content: text }
         ],
-        { max_new_tokens: 900, do_sample: false }
+        { max_new_tokens: 900, do_sample: true, temperature: 0.6, top_p: 0.9 }
     );
     let raw = out;
     if (Array.isArray(out) && out[0]) raw = out[0].generated_text;
