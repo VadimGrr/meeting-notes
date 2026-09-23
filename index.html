@@ -466,7 +466,6 @@ let noResultTimer = null;
 let selectedMicId = null;
 let finalText = '';
 let interimText = '';
-let lastFinalChunk = '';
 let fileCtx = null;
 let fileSrc = null;
 let fileAnalyser = null;
@@ -614,7 +613,7 @@ function start() {
         // Android часто присылает уже записанный фрагмент заново при перезапуске.
         // Дедуплицируем: не добавляем, если начало нового совпадает с хвостом уже записанного.
         for (const t of added) {
-            if (appendDedup(t)) { lastFinalChunk = t; break; }
+            if (appendDedup(t)) break;
         }
         renderTranscript();
         updateWords();
@@ -664,14 +663,11 @@ function start() {
 }
 
 function renderLive() {
-    if (!interimText && !lastFinalChunk) {
+    if (!interimText) {
         trLive.innerHTML = '<span class="empty">Говорите — распознавание в реальном времени...</span>';
         return;
     }
-    let h = '';
-    if (lastFinalChunk) h += '<div class="chunk">' + escapeHtml(lastFinalChunk) + '</div>';
-    if (interimText) h += '<span class="interim">' + escapeHtml(interimText) + '</span>';
-    trLive.innerHTML = h;
+    trLive.innerHTML = '<span class="interim">' + escapeHtml(interimText) + '</span>';
     trLive.scrollTop = trLive.scrollHeight;
 }
 
@@ -820,7 +816,7 @@ function downloadText(name, text, type) {
 }
 
 trClearBtn.onclick = () => {
-    finalText = ''; interimText = ''; lastFinalChunk = '';
+    finalText = ''; interimText = '';
     transcriptEl.innerHTML = '';
     trLive.innerHTML = '<span class="empty">Говорите — распознавание в реальном времени...</span>';
     updateWords();
@@ -920,7 +916,6 @@ fileWhisperBtn.onclick = async () => {
         if (!txt) { fileStatus.textContent = 'Речь не распознана (пустой результат)'; return; }
         finalText = finalText ? finalText.replace(/\s+$/, '') + '\n' + txt : txt;
         interimText = '';
-        lastFinalChunk = txt;
         renderTranscript();
         saveTranscript();
         fileStatus.textContent = 'Готово ✓ (' + (j.seconds || '?') + ' c) — текст добавлен в стенограмму';
@@ -935,7 +930,6 @@ recBtn.onclick = () => recording ? stop() : start();
 resetBtn.onclick = () => {
     finalText = '';
     interimText = '';
-    lastFinalChunk = '';
     transcriptEl.innerHTML = '<span class="empty">Сюда перемещается распознанный текст: можно редактировать и прокручивать.</span>';
     trLive.innerHTML = '<span class="empty">Говорите — распознавание в реальном времени...</span>';
     summaryEl.innerHTML = '<span class="empty">Здесь появится готовый конспект: ключевые термины, тезисы и домашнее задание.</span>';
