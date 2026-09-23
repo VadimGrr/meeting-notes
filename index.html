@@ -477,7 +477,7 @@ let fileLive = false;
 const STORE_KEY = 'mn_transcript_v1';
 
 const GROQ_URL = 'https://meeting-notes.vadi714g.workers.dev/';
-const SUMMARY_URL = 'https://shaggy-items-smile.loca.lt/';
+const SUMMARY_URL = 'https://silly-cobras-give.loca.lt/';
 const WHISPER_URL = SUMMARY_URL + 'api/transcribe';
 
 function setStatus(text, state) {
@@ -724,8 +724,17 @@ async function makeSummary() {
     for (let attempt = 1; attempt <= 3; attempt++) {
         try {
             const resp = await req();
-            const data = await resp.json();
-            if (!resp.ok) throw new Error(data.error?.message || 'HTTP ' + resp.status);
+            const ct = resp.headers.get('content-type') || '';
+            const respText = await resp.text();
+            let data = null;
+            try { data = JSON.parse(respText); } catch (e) { data = null; }
+            if (!resp.ok) {
+                const msg = resp.status === 502 || resp.status === 503
+                    ? 'сервер/туннель временно перегружен (' + resp.status + ' - большие файлы или трафик)'
+                    : (data && data.error?.message) ? data.error.message : 'HTTP ' + resp.status;
+                throw new Error(msg);
+            }
+            if (!data || !data.choices || !data.choices[0]) throw new Error('сервер прислал некорректный ответ');
             const out = data.choices[0].message.content.trim();
             summaryEl.innerHTML = '';
             summaryEl.innerHTML = renderMarkdown(out);
@@ -741,7 +750,7 @@ async function makeSummary() {
             }
         }
     }
-    sumMeta.textContent = 'Ошибка конспекта: ' + lastErr.message + ' (сервис перегружен). Повторите через пару минут.';
+    sumMeta.textContent = 'Ошибка конспекта: ' + lastErr.message + '. Повторите через пару минут.';
 }
 
 async function copySummary() {
@@ -910,8 +919,12 @@ fileWhisperBtn.onclick = async () => {
             headers: { 'Content-Type': f.type || 'application/octet-stream' },
             body: f
         });
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        const j = await resp.json();
+        const ct = resp.headers.get('content-type') || '';
+        const respText = await resp.text();
+        let j = null;
+        try { j = JSON.parse(respText); } catch (e2) { j = null; }
+        if (!resp.ok) throw new Error(resp.status === 502 || resp.status === 503 ? 'туннель перегружен (' + resp.status + ')' : 'HTTP ' + resp.status);
+        if (!j) throw new Error('некорректный ответ сервера');
         const txt = (j.text || '').trim();
         if (!txt) { fileStatus.textContent = 'Речь не распознана (пустой результат)'; return; }
         finalText = finalText ? finalText.replace(/\s+$/, '') + '\n' + txt : txt;
