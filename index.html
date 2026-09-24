@@ -727,36 +727,12 @@ async function loadLocalModel(progress) {
         const { pipeline, env } = await import('https://esm.sh/@huggingface/transformers@4.3.0');
         env.allowLocalModels = false;
         env.useBrowserCache = true;
-        let useWebGPU = false;
-        if (typeof navigator !== 'undefined' && navigator.gpu) {
-            try {
-                const adapter = await navigator.gpu.requestAdapter();
-                useWebGPU = !!adapter;
-            } catch (e) { useWebGPU = false; }
-        }
-        if (useWebGPU) { device = 'webgpu'; dtype = 'fp16'; }
-        const doLoad = async () => await pipeline('text-generation', MODEL_ID, {
-            device, dtype,
+        localGen = await pipeline('text-generation', MODEL_ID, {
+            dtype, device,
             progress_callback: (p) => {
                 if (p && typeof p.total === 'number') progress({ loaded: p.loaded, total: p.total });
             }
         });
-        try {
-            localGen = await doLoad();
-        } catch (e) {
-            console.warn('webgpu-загрузка не удалась, переключаюсь на cpu:', e);
-            if (device === 'webgpu') {
-                device = 'cpu'; dtype = 'int8';
-                localGen = await pipeline('text-generation', MODEL_ID, {
-                    device, dtype,
-                    progress_callback: (p) => {
-                        if (p && typeof p.total === 'number') progress({ loaded: p.loaded, total: p.total });
-                    }
-                });
-            } else {
-                throw e;
-            }
-        }
         localModelStatus = 'ready';
         return localGen;
     } catch (e) {
@@ -770,14 +746,24 @@ async function loadLocalModel(progress) {
 
 async function summarizeLocal(text, systemPrompt, onProgress) {
     const gen = await loadLocalModel(onProgress);
-    onProgress({ loading: false, msg: 'Генерация конспекта (локально)...' });
-    const out = await gen(
-        [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: text }
-        ],
-        { max_new_tokens: 900, do_sample: true, temperature: 0.6, top_p: 0.9 }
-    );
+    onProgress({ loading: false, msg: 'Генерация конспекта (локально, может занять 1-3 минуты)...' });
+    let out;
+    try {
+        out = await gen(
+            [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: text }
+            ],
+            { max_new_tokens: 900, do_sample: true, temperature: 0.6, top_p: 0.9 }
+        );
+    } catch (e) {
+        const m = String(e && e.message ? e.message : e);
+        if (m.includes('bad_alloc') || m.includes('OrtRun')) {
+            localGen = null; localModelStatus = 'idle';
+            throw new Error('не хватило памяти в браузере. Попробуйте Ollama (Локально (Ollama)) — работает через видеокарту.');
+        }
+        throw e;
+    }
     let raw = out;
     if (Array.isArray(out) && out[0]) raw = out[0].generated_text;
     if (Array.isArray(raw)) {
