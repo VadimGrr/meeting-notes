@@ -218,6 +218,26 @@ main {
 }
 #sum-actions button { flex: 1; }
 #sum-actions[hidden] { display: none; }
+#qa-row {
+    display: flex; gap: 10px; padding: 10px 16px;
+    border-top: 1px solid var(--glass-border);
+}
+#qa-input {
+    flex: 1; min-width: 0;
+    background: var(--field-bg); color: var(--text);
+    border: 1px solid var(--field-border);
+    border-radius: 10px;
+    padding: 8px 12px; font-size: 13px;
+    outline: none;
+}
+#qa-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.22); }
+#qa-btn { white-space: nowrap; }
+#qa-answer {
+    padding: 0 16px; font-size: 13.5px; line-height: 1.6;
+    color: var(--text); white-space: pre-wrap;
+    max-height: 160px; overflow-y: auto;
+}
+#qa-answer:empty { display: none; }
 .empty { color: var(--muted); font-style: italic; }
 
 #diag {
@@ -250,6 +270,18 @@ body.light ::-webkit-scrollbar-thumb { background: rgba(35, 32, 56, 0.25); borde
     border-top: 1px solid var(--glass-border);
 }
 #tr-controls button { padding: 6px 12px; font-size: 12.5px; box-shadow: none; border-radius: 8px; }
+#tr-search {
+    flex: 1; min-width: 120px;
+    background: var(--field-bg); color: var(--text);
+    border: 1px solid var(--field-border);
+    border-radius: 8px;
+    padding: 7px 12px; font-size: 12.5px;
+    outline: none;
+}
+#tr-search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.22); }
+#transcript mark { background: rgba(254, 202, 87, 0.45); color: inherit; border-radius: 3px; padding: 0 1px; }
+body.light #transcript mark { background: rgba(254, 202, 87, 0.6); }
+#tr-dl-audio-btn:disabled { opacity: 0.45; }
 #tr-live {
     flex: 0 0 auto; max-height: 96px; min-height: 46px;
     overflow-y: auto; padding: 10px 18px;
@@ -345,6 +377,10 @@ body.light #tr-live { background: rgba(35, 32, 56, 0.03); }
             <button id="tr-copy-btn" class="secondary">📋 Копировать</button>
             <button id="tr-dl-txt-btn" class="secondary">⬇ .txt</button>
             <button id="tr-dl-md-btn" class="secondary">⬇ .md</button>
+            <button id="tr-dl-srt-btn" class="secondary" title="Субтитры с таймстампами (из распознавания Whisper по файлу)">⬇ .srt</button>
+            <button id="tr-dl-vtt-btn" class="secondary" title="Веб-субтитры (из распознавания Whisper по файлу)">⬇ .vtt</button>
+            <button id="tr-dl-audio-btn" class="secondary" disabled title="Сохранить запись микрофона этой сессии">⬇ Запись</button>
+            <input id="tr-search" type="text" placeholder="Поиск по стенограмме...">
         </div>
     </section>
     <section class="panel">
@@ -353,6 +389,7 @@ body.light #tr-live { background: rgba(35, 32, 56, 0.03); }
             <select id="mode-select" title="Режим обработки">
                 <option value="lecture">Лекция / Учёба</option>
                 <option value="meeting">Рабочая встреча / Совещание</option>
+                <option value="protocol">Протокол (решения/задачи)</option>
             </select>
             <select id="provider-select" title="Генератор конспекта">
                 <option value="ollama">Локально (Ollama)</option>
@@ -367,6 +404,11 @@ body.light #tr-live { background: rgba(35, 32, 56, 0.03); }
             <button id="copy-sum-btn" class="secondary">📋 Скопировать</button>
             <button id="dl-sum-btn" class="secondary">⬇ Скачать (.md)</button>
         </div>
+        <div id="qa-row">
+            <input id="qa-input" type="text" placeholder="Спросить по встрече (например: «Что решили по срокам?»)">
+            <button id="qa-btn" class="secondary">💬 Спросить</button>
+        </div>
+        <div id="qa-answer"></div>
         <div id="sum-meta"></div>
     </section>
 </main>
@@ -410,6 +452,13 @@ const trClearBtn = document.getElementById('tr-clear-btn');
 const trCopyBtn = document.getElementById('tr-copy-btn');
 const trDlTxtBtn = document.getElementById('tr-dl-txt-btn');
 const trDlMdBtn = document.getElementById('tr-dl-md-btn');
+const trDlSrtBtn = document.getElementById('tr-dl-srt-btn');
+const trDlVttBtn = document.getElementById('tr-dl-vtt-btn');
+const trDlAudioBtn = document.getElementById('tr-dl-audio-btn');
+const trSearch = document.getElementById('tr-search');
+const qaInput = document.getElementById('qa-input');
+const qaBtn = document.getElementById('qa-btn');
+const qaAnswer = document.getElementById('qa-answer');
 const trLive = document.getElementById('tr-live');
 const fileInput = document.getElementById('file-input');
 const filePlayBtn = document.getElementById('file-play-btn');
@@ -420,7 +469,8 @@ const audioEl = document.getElementById('audio-el');
 
 const SYSTEM_PROMPTS = {
     lecture: 'Ты — ассистент, который превращает сырую транскрипцию лекции в краткий структурированный конспект на русском для студента. Выдели: ключевые термины и определения, основные тезисы по разделам, примеры, и «Домашнее задание» с пунктами списком, если оно упоминалось. Кратко, без воды.',
-    meeting: 'Ты — ассистент, который превращает сырой текст стенограммы рабочей встречи в краткий структурированный конспект на русском. Выдели: решения, ответственные, сроки, следующие шаги — пунктами списками. Кратко, без воды.'
+    meeting: 'Ты — ассистент, который превращает сырой текст стенограммы рабочей встречи в краткий структурированный конспект на русском. Выдели: решения, ответственные, сроки, следующие шаги — пунктами списками. Кратко, без воды.',
+    protocol: 'Ты — ассистент по ведению протокола совещания. Преврати стенограмму в официальный протокол на русском со строгими разделами: 1) Присутствовали/участники (если названы), 2) Обсуждённые вопросы, 3) Принятые решения, 4) Задачи и ответственные (список: задача — ответственный — срок), 5) Риски и открытые вопросы. Пустых разделов не пропускай: пиши «—» если в записи нет данных. Кратко, по фактам, без оценок.'
 };
 
 function diag(...args) {
@@ -481,10 +531,17 @@ let fileRaf = null;
 let fileUrl = null;
 let fileRouted = false;
 let fileLive = false;
+let recorder = null;
+let audioChunks = [];
+let audioBlob = null;
+let audioUrl = null;
+let srtEntries = [];
+let srtOffset = 0;
+let summarizing = false;
 const STORE_KEY = 'mn_transcript_v1';
 
 const GROQ_URL = 'https://meeting-notes.vadi714g.workers.dev/';
-const SUMMARY_URL = 'https://sharp-experts-mix.loca.lt/';
+const SUMMARY_URL = 'https://few-mugs-grab.loca.lt/';
 const WHISPER_URL = SUMMARY_URL + 'api/transcribe';
 const YANDEX_URL = SUMMARY_URL + 'api/yandex';
 const OLLAMA_URL = SUMMARY_URL + 'api/ollama';
@@ -602,6 +659,7 @@ function start() {
     // НЕ держим отдельный поток микрофона (конфликтует с Web Speech на Android).
     // Показываем анимацию-пульсацию вместо реального уровня RMS.
     startMeter();
+    startAudioCapture();
 
     r.onstart = () => { recording = true; silentEnds = 0; lastResultAt = Date.now(); setStatus('Слушаю...', 'rec'); recBtn.textContent = '■'; recBtn.classList.remove('secondary'); diag('onstart'); startWarnTimer(); };
     r.onresult = (e) => {
@@ -684,6 +742,7 @@ function renderTranscript() {
     if (transcriptEl.querySelector('.empty')) transcriptEl.innerHTML = '';
     let cur = transcriptEl.innerText.replace(/\n*$/, '');
     if (cur !== finalText) transcriptEl.innerText = finalText;
+    if (trSearch && trSearch.value.trim()) applySearch();
     transcriptEl.scrollTop = transcriptEl.scrollHeight;
     renderLive();
     updateWords();
@@ -704,12 +763,17 @@ function stop() {
     }
     if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
     stopMeter();
+    stopAudioCapture();
     recBtn.textContent = '▶';
     recBtn.classList.add('secondary');
     micSelect.disabled = false;
     micRefresh.disabled = false;
     renderTranscript();
     setStatus('Готово', 'on');
+    if (providerSelect && providerSelect.value !== 'local') {
+        const wc = finalText.trim().split(/\s+/).filter(Boolean).length;
+        if (wc >= 25 && !summarizing) setTimeout(() => makeSummary(), 600);
+    }
 }
 
 // ── Локальная модель в браузере (transformers.js) ──
@@ -789,6 +853,14 @@ async function summarizeLocal(text, systemPrompt, onProgress) {
 }
 
 async function makeSummary() {
+    if (summarizing) return;
+    summarizing = true;
+    sumBtn.disabled = true;
+    try { await doMakeSummary(); }
+    finally { summarizing = false; sumBtn.disabled = false; }
+}
+
+async function doMakeSummary() {
     const text = finalText.trim();
     if (!text) { sumMeta.textContent = 'Нет текста для конспекта.'; return; }
     if (text.split(/\s+/).length < 25) { sumMeta.textContent = 'Накопите больше текста (минимум ~25 слов).'; return; }
@@ -1040,6 +1112,13 @@ fileWhisperBtn.onclick = async () => {
         if (!txt) { fileStatus.textContent = 'Речь не распознана (пустой результат)'; return; }
         finalText = finalText ? finalText.replace(/\s+$/, '') + '\n' + txt : txt;
         interimText = '';
+        if (Array.isArray(j.segments) && j.segments.length) {
+            for (const s of j.segments) {
+                srtEntries.push({ start: srtOffset + (s.start || 0), end: srtOffset + (s.end || 0), text: s.text || '' });
+            }
+            const last = j.segments[j.segments.length - 1];
+            srtOffset = Math.max(srtOffset, last.end || 0);
+        }
         renderTranscript();
         saveTranscript();
         fileStatus.textContent = 'Готово ✓ (' + (j.seconds || '?') + ' c) — текст добавлен в стенограмму';
@@ -1050,15 +1129,166 @@ fileWhisperBtn.onclick = async () => {
     }
 };
 
+// ── Запись микрофона в файл (MediaRecorder) ────
+async function startAudioCapture() {
+    if (typeof MediaRecorder === 'undefined') return;
+    try {
+        const opts = selectedMicId ? { audio: { deviceId: { ideal: selectedMicId } } } : { audio: true };
+        const s = await navigator.mediaDevices.getUserMedia(opts);
+        audioChunks = [];
+        recorder = new MediaRecorder(s);
+        recorder.ondataavailable = (e) => { if (e.data && e.data.size) audioChunks.push(e.data); };
+        recorder.onstop = () => {
+            try { s.getTracks().forEach(t => t.stop()); } catch (e2) {}
+            audioBlob = new Blob(audioChunks, { type: recorder.mimeType || 'audio/webm' });
+            audioChunks = [];
+            if (audioUrl) URL.revokeObjectURL(audioUrl);
+            audioUrl = URL.createObjectURL(audioBlob);
+            trDlAudioBtn.disabled = false;
+            diag('audio-saved', (audioBlob.size / 1048576).toFixed(2) + ' MB');
+        };
+        recorder.start();
+        diag('audio-rec-start');
+    } catch (e) {
+        diag('audio-capture-err', String(e));
+    }
+}
+
+function stopAudioCapture() {
+    if (recorder && recorder.state !== 'inactive') {
+        try { recorder.stop(); } catch (e) { /* ignore */ }
+    }
+    recorder = null;
+}
+
+// ── Поиск по стенограмме с подсветкой ──────────
+function applySearch() {
+    const q = trSearch.value.trim().toLowerCase();
+    const txt = finalText.replace(/\n*$/, '');
+    if (!q) {
+        transcriptEl.innerHTML = '';
+        transcriptEl.innerText = txt;
+        if (!txt) transcriptEl.innerHTML = '<span class="empty">Сюда перемещается распознанный текст: можно редактировать и прокручивать.</span>';
+        transcriptEl.scrollTop = transcriptEl.scrollHeight;
+        return;
+    }
+    const plain = txt.toLowerCase();
+    let out = ''; let pos = 0; let cursor = 0; let found = false;
+    while (cursor < txt.length) {
+        const hit = plain.indexOf(q, cursor);
+        if (hit === -1) { out += escapeHtml(txt.slice(pos)); break; }
+        found = true;
+        out += escapeHtml(txt.slice(pos, hit));
+        out += '<mark>' + escapeHtml(txt.slice(hit, hit + q.length)) + '</mark>';
+        pos = hit + q.length;
+        cursor = pos;
+    }
+    transcriptEl.innerHTML = found ? out : '<span class="empty">Нет совпадений для «' + escapeHtml(trSearch.value) + '»</span>';
+    transcriptEl.scrollTop = transcriptEl.scrollHeight;
+}
+
+// ── Субтитры / экспорт с таймстампами ──────────
+function downloadBlob(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function fmtSrt(t) {
+    const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = Math.floor(t % 60), ms = Math.floor((t % 1) * 1000);
+    const p = (n, l) => String(n).padStart(l, '0');
+    return p(h, 2) + ':' + p(m, 2) + ':' + p(s, 2) + ',' + p(ms, 3);
+}
+
+function buildSrt() {
+    if (!srtEntries.length) return '';
+    let out = '';
+    srtEntries.forEach((seg, i) => {
+        out += (i + 1) + '\n' + fmtSrt(seg.start) + ' --> ' + fmtSrt(seg.end) + '\n' + seg.text.replace(/\n+/g, ' ').trim() + '\n\n';
+    });
+    return out;
+}
+
+function buildVtt() {
+    if (!srtEntries.length) return '';
+    const ff = (t) => {
+        const m = Math.floor(t / 60), s = Math.floor(t % 60), ms = Math.floor((t % 1) * 1000);
+        return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0') + '.' + String(ms).padStart(3, '0');
+    };
+    let out = 'WEBVTT\n\n';
+    srtEntries.forEach((seg) => {
+        out += ff(seg.start) + ' --> ' + ff(seg.end) + '\n' + seg.text.replace(/\n+/g, ' ').trim() + '\n\n';
+    });
+    return out;
+}
+
+// ── Вопрос по встрече ──────────────────────────
+async function askMeeting() {
+    const q = qaInput.value.trim();
+    if (!q) return;
+    if (!finalText.trim()) { qaAnswer.textContent = 'Нет стенограммы — сначала накопите текст.'; return; }
+    qaBtn.disabled = true;
+    qaAnswer.textContent = 'Думаю...';
+    try {
+        const words = finalText.trim().split(/\s+/);
+        const ctx = words.length > 1500 ? words.slice(0, 1500).join(' ') + '\n…[контекст усечён]' : finalText;
+        const endpoint = providerSelect.value === 'gigachat' ? SUMMARY_URL : (providerSelect.value === 'yandex' ? YANDEX_URL : OLLAMA_URL);
+        const resp = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'bypass-tunnel-reminder': 'true' },
+            body: JSON.stringify({
+                temperature: 0.3,
+                messages: [
+                    { role: 'system', content: 'Ты отвечаешь на вопросы по стенограмме встречи или лекции. Отвечай кратко и только по фактам из стенограммы. Если ответа нет в стенограмме — так и скажи.' },
+                    { role: 'user', content: 'Стенограмма:\n' + ctx + '\n\nВопрос: ' + q }
+                ]
+            })
+        });
+        const txt = await resp.text();
+        let d = null;
+        try { d = JSON.parse(txt); } catch (e2) { d = null; }
+        if (!resp.ok) throw new Error((d && d.error && d.error.message) ? d.error.message : 'HTTP ' + resp.status);
+        qaAnswer.textContent = (d.choices[0].message.content || '').trim();
+    } catch (e) {
+        qaAnswer.textContent = 'Ошибка: ' + e.message;
+    } finally {
+        qaBtn.disabled = false;
+    }
+}
+
+trSearch.addEventListener('input', applySearch);
+qaBtn.onclick = askMeeting;
+qaInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') askMeeting(); });
+trDlSrtBtn.onclick = () => {
+    const data = buildSrt();
+    if (!data) { flashBtn(trDlSrtBtn, 'Нет таймингов'); return; }
+    downloadText('стенограмма.srt', data, 'text/plain;charset=utf-8');
+};
+trDlVttBtn.onclick = () => {
+    const data = buildVtt();
+    if (!data) { flashBtn(trDlVttBtn, 'Нет таймингов'); return; }
+    downloadText('стенограмма.vtt', data, 'text/vtt;charset=utf-8');
+};
+trDlAudioBtn.onclick = () => {
+    if (!audioBlob) return;
+    downloadBlob(audioBlob, 'запись.' + ((audioBlob.type || '').indexOf('mp4') !== -1 ? 'm4a' : 'webm'));
+};
+
 recBtn.onclick = () => recording ? stop() : start();
 resetBtn.onclick = () => {
     finalText = '';
     interimText = '';
+    srtEntries = []; srtOffset = 0;
+    if (audioUrl) { URL.revokeObjectURL(audioUrl); audioUrl = null; }
+    audioBlob = null; trDlAudioBtn.disabled = true;
     transcriptEl.innerHTML = '<span class="empty">Сюда перемещается распознанный текст: можно редактировать и прокручивать.</span>';
     trLive.innerHTML = '<span class="empty">Говорите — распознавание в реальном времени...</span>';
     summaryEl.innerHTML = '<span class="empty">Здесь появится готовый конспект: ключевые термины, тезисы и домашнее задание.</span>';
     delete summaryEl.dataset.md;
     sumActions.hidden = true;
+    qaAnswer.textContent = '';
     wordCountEl.textContent = '0 слов';
     sumMeta.textContent = '';
     saveTranscript();
@@ -1098,5 +1328,6 @@ navigator.mediaDevices && navigator.mediaDevices.getUserMedia({ audio: true })
 </script>
 </body>
 </html>
+
 
 
