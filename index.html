@@ -746,7 +746,13 @@ async function loadLocalModel(progress) {
 
 async function summarizeLocal(text, systemPrompt, onProgress) {
     const gen = await loadLocalModel(onProgress);
-    onProgress({ loading: false, msg: 'Генерация конспекта (локально, может занять 1-3 минуты)...' });
+    const t0 = Date.now();
+    onProgress({ loading: false, msg: 'Генерация конспекта (браузерная модель медленная)...' });
+    let timer = setInterval(() => {
+        const s = Math.round((Date.now() - t0) / 1000);
+        const hint = s > 30 ? ' (медленно? Используйте «Локально (Ollama)» — через видеокарту)' : '';
+        onProgress({ loading: false, msg: 'Генерация... ' + s + ' с' + hint });
+    }, 5000);
     let out;
     try {
         out = await gen(
@@ -754,16 +760,18 @@ async function summarizeLocal(text, systemPrompt, onProgress) {
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: text }
             ],
-            { max_new_tokens: 900, do_sample: true, temperature: 0.6, top_p: 0.9 }
+            { max_new_tokens: 250, do_sample: true, temperature: 0.6, top_p: 0.9 }
         );
     } catch (e) {
+        clearInterval(timer);
         const m = String(e && e.message ? e.message : e);
         if (m.includes('bad_alloc') || m.includes('OrtRun')) {
             localGen = null; localModelStatus = 'idle';
-            throw new Error('не хватило памяти в браузере. Попробуйте Ollama (Локально (Ollama)) — работает через видеокарту.');
+            throw new Error('не хватило памяти в браузере. Попробуйте «Локально (Ollama)» — работает через видеокарту.');
         }
         throw e;
     }
+    clearInterval(timer);
     let raw = out;
     if (Array.isArray(out) && out[0]) raw = out[0].generated_text;
     if (Array.isArray(raw)) {
