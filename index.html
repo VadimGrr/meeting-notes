@@ -746,6 +746,11 @@ async function loadLocalModel(progress) {
 
 async function summarizeLocal(text, systemPrompt, onProgress) {
     const gen = await loadLocalModel(onProgress);
+    const words = text.split(/\s+/);
+    let feed = text;
+    if (words.length > 800) {
+        feed = words.slice(0, 800).join(' ') + '\n…[текст усечён для браузерной модели]';
+    }
     const t0 = Date.now();
     onProgress({ loading: false, msg: 'Генерация конспекта (браузерная модель медленная)...' });
     let timer = setInterval(() => {
@@ -758,7 +763,7 @@ async function summarizeLocal(text, systemPrompt, onProgress) {
         out = await gen(
             [
                 { role: 'system', content: systemPrompt },
-                { role: 'user', content: text }
+                { role: 'user', content: feed }
             ],
             { max_new_tokens: 250, do_sample: true, temperature: 0.6, top_p: 0.9 }
         );
