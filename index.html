@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
@@ -355,6 +355,7 @@ body.light #tr-live { background: rgba(35, 32, 56, 0.03); }
                 <option value="meeting">Рабочая встреча / Совещание</option>
             </select>
             <select id="provider-select" title="Генератор конспекта">
+                <option value="ollama">Локально (Ollama)</option>
                 <option value="local">Локально (в браузере)</option>
                 <option value="yandex">Яндекс GPT</option>
                 <option value="gigachat">Сбер GigaChat</option>
@@ -483,9 +484,10 @@ let fileLive = false;
 const STORE_KEY = 'mn_transcript_v1';
 
 const GROQ_URL = 'https://meeting-notes.vadi714g.workers.dev/';
-const SUMMARY_URL = 'https://tidy-baboons-begin.loca.lt/';
+const SUMMARY_URL = 'https://eager-trains-fly.loca.lt/';
 const WHISPER_URL = SUMMARY_URL + 'api/transcribe';
 const YANDEX_URL = SUMMARY_URL + 'api/yandex';
+const OLLAMA_URL = SUMMARY_URL + 'api/ollama';
 
 function setStatus(text, state) {
     statusEl.textContent = text;
@@ -816,7 +818,7 @@ async function makeSummary() {
         }
     }
 
-    const endpoint = provider === 'gigachat' ? SUMMARY_URL : YANDEX_URL;
+    const endpoint = provider === 'gigachat' ? SUMMARY_URL : (provider === 'yandex' ? YANDEX_URL : OLLAMA_URL);
     sumMeta.textContent = 'Генерация конспекта...';
     const req = () => fetch(endpoint, {
         method: 'POST',
@@ -1080,7 +1082,7 @@ try {
     const savedMode = localStorage.getItem('mode');
     if (savedMode && SYSTEM_PROMPTS[savedMode]) modeSelect.value = savedMode;
     const savedProvider = localStorage.getItem('provider');
-    if (savedProvider && ['local', 'yandex', 'gigachat'].includes(savedProvider)) providerSelect.value = savedProvider;
+    if (savedProvider && ['ollama', 'local', 'yandex', 'gigachat'].includes(savedProvider)) providerSelect.value = savedProvider;
 } catch (e) {}
 micToggle.onclick = () => {
     const hidden = micRow.style.display === 'none';
@@ -1097,3 +1099,4 @@ navigator.mediaDevices && navigator.mediaDevices.getUserMedia({ audio: true })
 </script>
 </body>
 </html>
+
